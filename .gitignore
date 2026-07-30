@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+ENV/
+
+# Logs e dati temporanei
+*.log
+*.tmp
+*.bak
+launch.log
+
+# Output e media generati
+output/
+outputs/
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Streamlit
+.streamlit/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Sistema operativo
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# OneDrive
+*.tmp
+~$*
