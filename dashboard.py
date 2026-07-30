@@ -1,0 +1,284 @@
+import os
+import streamlit as st
+from pathlib import Path
+
+import duplicate_finder
+import photo_enhancer
+import video_slideshow
+import video_merger
+import video_editor
+
+
+st.set_page_config(page_title="AppFoto Studio", layout="wide")
+
+st.markdown("""
+<style>
+    .stApp {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        color: #e2e8f0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    h1, h2, h3 {
+        color: #38bdf8;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .main-header {
+        text-align: center;
+        margin-top: -1rem;
+        margin-bottom: 0.2rem;
+    }
+    .main-header h1 {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #38bdf8;
+        letter-spacing: -1px;
+    }
+    .sub-header {
+        text-align: center;
+        color: #94a3b8;
+        margin-bottom: 2rem;
+        font-size: 1.1rem;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: #1e293b;
+        color: #e2e8f0;
+        border-radius: 10px 10px 0 0;
+        padding: 12px 28px;
+        font-weight: 600;
+        border: 1px solid #334155;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #0ea5e9;
+        color: white;
+        border-color: #0ea5e9;
+    }
+    div.stButton > button:first-child {
+        background-color: #0ea5e9;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.6rem 1.2rem;
+        font-weight: 600;
+        transition: 0.2s;
+    }
+    div.stButton > button:hover {
+        background-color: #0284c7;
+    }
+    div[data-testid="stTextInput"] label,
+    div[data-testid="stNumberInput"] label,
+    div[data-testid="stSlider"] label,
+    div[data-testid="stSelectbox"] label {
+        color: #cbd5e1 !important;
+        font-weight: 500;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="main-header"><h1>AppFoto Studio</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Gestione foto e video professionale in un clic</div>', unsafe_allow_html=True)
+
+with st.sidebar:
+    st.header("AppFoto Studio")
+    st.markdown("""
+    **Funzionalità:**
+    - Rilevamento duplicati foto
+    - Miglioramento automatico foto
+    - Montaggio slideshow
+    - Unione video
+    - Editor video (taglio, filtri, audio, frame)
+    """)
+    st.info("Inserisci i percorsi delle cartelle o dei file, configura i parametri e premi il pulsante per eseguire.")
+
+IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.gif'}
+VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv'}
+
+
+def _list_files(folder, exts):
+    p = Path(folder)
+    if not p.is_dir():
+        return []
+    return sorted([str(f) for f in p.iterdir() if f.suffix.lower() in exts and f.is_file()])
+
+
+tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video"])
+
+with tabs[0]:
+    st.header("Rilevamento foto duplicate")
+    st.markdown("Trova foto duplicate o quasi identiche tramite hashing percettivo.")
+    dup_folder = st.text_input("Cartella immagini", key="dup_folder")
+    dup_threshold = st.slider("Soglia distanza Hamming", 0, 20, 10, key="dup_threshold")
+    if st.button("Cerca duplicati", key="dup_search"):
+        if not dup_folder or not Path(dup_folder).is_dir():
+            st.error("Inserisci una cartella valida")
+        else:
+            with st.spinner("Scansione in corso..."):
+                try:
+                    report = duplicate_finder.find_and_report(dup_folder, dup_threshold, False, None)
+                except Exception as e:
+                    st.error(str(e))
+                else:
+                    st.success(f"Trovati {report['duplicate_groups']} gruppi di duplicati su {report['total_images']} immagini")
+                    for i, group in enumerate(report['groups'], 1):
+                        st.subheader(f"Gruppo {i} — migliore: {Path(group['best']).name}")
+                        table = {"file": [], "risoluzione": []}
+                        for f in group['duplicates']:
+                            table['file'].append(f)
+                            table['risoluzione'].append(duplicate_finder._image_resolution(Path(f)))
+                        st.table(table)
+                    if report['duplicate_groups'] > 0:
+                        if st.button("Elimina tutte le copie a risoluzione minore", key="dup_delete"):
+                            with st.spinner("Eliminazione in corso..."):
+                                try:
+                                    duplicate_finder.find_and_report(dup_folder, dup_threshold, True, None)
+                                except Exception as e:
+                                    st.error(str(e))
+                                else:
+                                    st.success("Copie duplicate eliminate. E rimasta solo quella con risoluzione maggiore per gruppo.")
+
+with tabs[1]:
+    st.header("Migliora foto")
+    st.markdown("Correggi esposizione, contrasto e nitidezza delle immagini.")
+    c1, c2 = st.columns(2)
+    with c1:
+        enh_in = st.text_input("Cartella foto in ingresso", key="enh_in")
+    with c2:
+        enh_out = st.text_input("Cartella foto in uscita", key="enh_out")
+    c3, c4, c5 = st.columns(3)
+    with c3:
+        gamma = st.number_input("Gamma", value=1.2, step=0.1, min_value=0.1, key="enh_gamma")
+    with c4:
+        sharp = st.number_input("Nitidezza", value=1.0, step=0.1, min_value=0.0, key="enh_sharp")
+    with c5:
+        blur = st.number_input("Soglia sfocatura", value=100.0, step=10.0, min_value=0.0, key="enh_blur")
+    if st.button("Migliora foto", key="enh_run"):
+        if not enh_in or not enh_out:
+            st.error("Inserisci entrambe le cartelle")
+        else:
+            with st.spinner("Elaborazione in corso..."):
+                try:
+                    photo_enhancer.enhance_folder(enh_in, enh_out, gamma, sharp, blur)
+                except Exception as e:
+                    st.error(str(e))
+                else:
+                    st.success(f"Foto migliorate salvate in: {enh_out}")
+
+with tabs[2]:
+    st.header("Crea slideshow da foto")
+    st.markdown("Genera un video con transizioni a dissolvenza a partire dalle tue foto.")
+    c1, c2 = st.columns(2)
+    with c1:
+        sld_input = st.text_input("Cartella foto (o percorsi separati da virgola)", key="sld_input")
+    with c2:
+        sld_output = st.text_input("File video di output", value="slideshow.mp4", key="sld_output")
+    c3, c4, c5 = st.columns(3)
+    with c3:
+        sld_duration = st.number_input("Durata immagine (s)", value=3.0, min_value=0.1, step=0.5, key="sld_duration")
+    with c4:
+        sld_transition = st.number_input("Transizione (s)", value=0.5, min_value=0.0, step=0.1, key="sld_transition")
+    with c5:
+        sld_fps = st.number_input("FPS", value=30, min_value=1, step=1, key="sld_fps")
+    c6, c7 = st.columns(2)
+    with c6:
+        sld_resolution = st.selectbox("Risoluzione", ["1920x1080", "1280x720", "3840x2160"], key="sld_resolution")
+    with c7:
+        sld_music = st.text_input("Musica di sottofondo (opzionale)", key="sld_music")
+    if st.button("Crea slideshow", key="sld_run"):
+        p = Path(sld_input.strip())
+        if p.is_dir():
+            paths = _list_files(sld_input, IMAGE_EXTS)
+        else:
+            paths = [x.strip() for x in sld_input.split(",") if x.strip()]
+        if not paths:
+            st.error("Nessuna immagine trovata")
+        else:
+            with st.spinner("Creazione video in corso... Questo puo richiedere tempo"):
+                try:
+                    video_slideshow.make_slideshow(paths, sld_output, sld_duration, sld_transition, sld_resolution, sld_fps, sld_music or None)
+                except Exception as e:
+                    st.error(str(e))
+                else:
+                    st.success(f"Slideshow salvato in: {sld_output}")
+
+with tabs[3]:
+    st.header("Unisci video")
+    st.markdown("Concatena piu clip in un unico video normalizzando risoluzione e framerate.")
+    c1, c2 = st.columns(2)
+    with c1:
+        mrg_input = st.text_input("Cartella video (o percorsi separati da virgola)", key="mrg_input")
+    with c2:
+        mrg_output = st.text_input("File video unito", value="merged.mp4", key="mrg_output")
+    c3, c4 = st.columns(2)
+    with c3:
+        mrg_resolution = st.selectbox("Risoluzione", ["1920x1080", "1280x720", "3840x2160"], key="mrg_resolution")
+    with c4:
+        mrg_fps = st.number_input("FPS", value=30, min_value=1, step=1, key="mrg_fps")
+    if st.button("Unisci video", key="mrg_run"):
+        p = Path(mrg_input.strip())
+        if p.is_dir():
+            paths = _list_files(mrg_input, VIDEO_EXTS)
+        else:
+            paths = [x.strip() for x in mrg_input.split(",") if x.strip()]
+        if not paths:
+            st.error("Nessun video trovato")
+        else:
+            with st.spinner("Unione video in corso..."):
+                try:
+                    video_merger.merge_videos(paths, mrg_output, mrg_resolution, mrg_fps)
+                except Exception as e:
+                    st.error(str(e))
+                else:
+                    st.success(f"Video unito salvato in: {mrg_output}")
+
+with tabs[4]:
+    st.header("Editor Video")
+    st.markdown("Taglia clip, aggiungi musica, applica filtri artistici ed estrai frame.")
+    operation = st.selectbox("Operazione", ["Taglia", "Aggiungi musica", "Applica filtro", "Estrai frame"], key="vid_op")
+    c1, c2 = st.columns(2)
+    with c1:
+        vid_input = st.text_input("Video di ingresso", key="vid_input")
+    with c2:
+        vid_output = st.text_input("File/cartella di uscita", value="output.mp4", key="vid_output")
+    if operation == "Taglia":
+        c3, c4 = st.columns(2)
+        with c3:
+            start_t = st.number_input("Inizio (s)", value=0.0, min_value=0.0, step=0.1, key="vid_start")
+        with c4:
+            end_t = st.number_input("Fine (s)", value=10.0, min_value=0.0, step=0.1, key="vid_end")
+        if st.button("Taglia video", key="vid_trim"):
+            with st.spinner("Taglio in corso..."):
+                try:
+                    video_editor.trim_video(vid_input, vid_output, start_t, end_t)
+                    st.success(f"Video tagliato: {vid_output}")
+                except Exception as e:
+                    st.error(str(e))
+    elif operation == "Aggiungi musica":
+        audio_file = st.text_input("File audio", key="vid_audio")
+        loop_audio = st.checkbox("Ripeti audio se piu corto del video", key="vid_loop")
+        if st.button("Aggiungi musica", key="vid_music_btn"):
+            with st.spinner("Aggiunta audio..."):
+                try:
+                    video_editor.add_music_to_video(vid_input, audio_file, vid_output, loop_audio)
+                    st.success(f"Audio aggiunto: {vid_output}")
+                except Exception as e:
+                    st.error(str(e))
+    elif operation == "Applica filtro":
+        filter_name = st.selectbox("Filtro", ["grayscale", "blur", "negate", "edgedetect", "vignette", "sharpen"], key="vid_filter")
+        if st.button("Applica filtro", key="vid_filter_btn"):
+            with st.spinner("Applicazione filtro..."):
+                try:
+                    video_editor.apply_filter(vid_input, vid_output, filter_name)
+                    st.success(f"Filtro applicato: {vid_output}")
+                except Exception as e:
+                    st.error(str(e))
+    elif operation == "Estrai frame":
+        interval = st.number_input("Intervallo in secondi", value=1.0, min_value=0.1, step=0.1, key="vid_interval")
+        if st.button("Estrai frame", key="vid_frames"):
+            with st.spinner("Estrazione frame..."):
+                try:
+                    video_editor.extract_frames(vid_input, vid_output, interval)
+                    st.success(f"Frame estratti in: {vid_output}")
+                except Exception as e:
+                    st.error(str(e))
