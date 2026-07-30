@@ -4,12 +4,16 @@ from pathlib import Path
 
 import duplicate_finder
 import photo_enhancer
+import photo_editor
+import face_swap
 import video_slideshow
 import video_merger
 import video_editor
+import auth
 
 
 st.set_page_config(page_title="AppFoto Studio", layout="wide")
+auth.require_login()
 
 st.markdown("""
 <style>
@@ -143,7 +147,7 @@ def _list_files(folder, exts):
     return sorted([str(f) for f in p.iterdir() if f.suffix.lower() in exts and f.is_file()])
 
 
-tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video"])
+tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap"])
 
 with tabs[0]:
     st.header("Rilevamento foto duplicate")
@@ -320,5 +324,94 @@ with tabs[4]:
                 try:
                     video_editor.extract_frames(vid_input, vid_output, interval)
                     st.success(f"Frame estratti in: {vid_output}")
+                except Exception as e:
+                    st.error(str(e))
+
+with tabs[5]:
+    st.header("Editor Foto")
+    st.markdown("Ritaglia, ruota, ridimensiona e applica correzioni alle foto.")
+    c1, c2 = st.columns(2)
+    with c1:
+        edit_input = st.text_input("Foto in ingresso", key="edit_input")
+    with c2:
+        edit_output = st.text_input("Foto in uscita", key="edit_output")
+    if edit_input and Path(edit_input).is_file():
+        try:
+            preview = photo_editor.load_image(edit_input)
+            st.image(preview, caption="Anteprima originale", use_container_width=True)
+        except Exception as e:
+            st.error(str(e))
+    c3, c4, c5, c6 = st.columns(4)
+    with c3:
+        edit_rotate = st.number_input("Rotazione (°)", value=0.0, step=90.0, key="edit_rotate")
+    with c4:
+        edit_width = st.number_input("Larghezza (px)", value=0, step=10, key="edit_width", help="0 = invariata")
+    with c5:
+        edit_height = st.number_input("Altezza (px)", value=0, step=10, key="edit_height", help="0 = invariata")
+    with c6:
+        edit_keep_aspect = st.checkbox("Mantieni proporzioni", value=True, key="edit_keep_aspect")
+    c7, c8, c9, c10 = st.columns(4)
+    with c7:
+        edit_brightness = st.slider("Luminosità", 0.0, 3.0, 1.0, 0.1, key="edit_brightness")
+    with c8:
+        edit_contrast = st.slider("Contrasto", 0.0, 3.0, 1.0, 0.1, key="edit_contrast")
+    with c9:
+        edit_saturation = st.slider("Saturazione", 0.0, 3.0, 1.0, 0.1, key="edit_saturation")
+    with c10:
+        edit_sharpen = st.slider("Nitidezza", 0.0, 2.0, 0.0, 0.1, key="edit_sharpen")
+    c11, c12 = st.columns(2)
+    with c11:
+        edit_filter = st.selectbox("Filtro", ["nessuno", "grayscale", "sepia", "blur", "sharpen", "emboss", "edge", "contour"], key="edit_filter")
+    with c12:
+        st.markdown(" ")
+        st.markdown(" ")
+    if st.button("Applica modifiche", key="edit_run"):
+        if not edit_input or not edit_output:
+            st.error("Inserisci foto in ingresso e in uscita")
+        else:
+            with st.spinner("Elaborazione in corso..."):
+                try:
+                    kwargs = {
+                        "rotate": edit_rotate,
+                        "brightness": edit_brightness,
+                        "contrast": edit_contrast,
+                        "saturation": edit_saturation,
+                        "sharpen": edit_sharpen,
+                    }
+                    if edit_width:
+                        kwargs["width"] = edit_width
+                    if edit_height:
+                        kwargs["height"] = edit_height
+                    kwargs["keep_aspect"] = edit_keep_aspect
+                    if edit_filter != "nessuno":
+                        kwargs["filter"] = edit_filter
+                    photo_editor.process_image(edit_input, edit_output, **kwargs)
+                    st.image(photo_editor.load_image(edit_output), caption="Anteprima risultato", use_container_width=True)
+                    st.success(f"Foto salvata in: {edit_output}")
+                except Exception as e:
+                    st.error(str(e))
+
+with tabs[6]:
+    st.header("Face Swap")
+    st.markdown("Scambia il volto sorgente con quello in una foto destinazione. Usa solo foto di tua proprietà e con consenso.")
+    st.warning("Il risultato include un watermark 'GENERATED' ed è destinato a scopi leciti e creativi.")
+    c1, c2 = st.columns(2)
+    with c1:
+        face_src = st.text_input("Foto volto sorgente", key="face_src")
+    with c2:
+        face_dst = st.text_input("Foto corpo/volto destinazione", key="face_dst")
+    face_out = st.text_input("Foto di output", value="face_swap_output.jpg", key="face_out")
+    consent = st.checkbox("Confermo di avere i diritti e il consenso per entrambe le immagini", key="face_consent")
+    if st.button("Scambia volto", key="face_run"):
+        if not consent:
+            st.error("Devi confermare i diritti e il consenso per procedere.")
+        elif not face_src or not face_dst or not face_out:
+            st.error("Inserisci tutti i percorsi")
+        else:
+            with st.spinner("Scambio volto in corso..."):
+                try:
+                    out_path = face_swap.swap_face(face_src, face_dst, face_out)
+                    st.image(photo_editor.load_image(out_path), caption="Risultato", use_container_width=True)
+                    st.success(f"Foto salvata in: {out_path}")
                 except Exception as e:
                     st.error(str(e))
