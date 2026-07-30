@@ -14,13 +14,14 @@ st.set_page_config(page_title="AppFoto Studio", layout="wide")
 st.markdown("""
 <style>
     .stApp {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        color: #e2e8f0;
+        background-color: #0a0a0a;
+        color: #f1f1f1;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     h1, h2, h3 {
-        color: #38bdf8;
+        color: #d4af37;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-weight: 600;
     }
     .main-header {
         text-align: center;
@@ -28,51 +29,90 @@ st.markdown("""
         margin-bottom: 0.2rem;
     }
     .main-header h1 {
-        font-size: 3rem;
+        font-size: 3.2rem;
         font-weight: 700;
-        color: #38bdf8;
+        color: #d4af37;
         letter-spacing: -1px;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.6);
     }
     .sub-header {
         text-align: center;
-        color: #94a3b8;
+        color: #a0a0a0;
         margin-bottom: 2rem;
         font-size: 1.1rem;
     }
     .stTabs [data-baseweb="tab-list"] {
         gap: 10px;
+        background-color: #121212;
+        padding: 0.5rem 1rem 0 1rem;
+        border-radius: 12px 12px 0 0;
     }
     .stTabs [data-baseweb="tab"] {
-        background-color: #1e293b;
-        color: #e2e8f0;
+        background-color: #151515;
+        color: #d4d4d4;
         border-radius: 10px 10px 0 0;
         padding: 12px 28px;
         font-weight: 600;
-        border: 1px solid #334155;
+        border: 1px solid #333333;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #0ea5e9;
-        color: white;
-        border-color: #0ea5e9;
+        background-color: #d4af37;
+        color: #0a0a0a;
+        border-color: #d4af37;
     }
     div.stButton > button:first-child {
-        background-color: #0ea5e9;
-        color: white;
+        background-color: #d4af37;
+        color: #0a0a0a;
         border: none;
         border-radius: 8px;
         padding: 0.6rem 1.2rem;
-        font-weight: 600;
+        font-weight: 700;
         transition: 0.2s;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
     div.stButton > button:hover {
-        background-color: #0284c7;
+        background-color: #c5a028;
+        color: #0a0a0a;
+        box-shadow: 0 6px 10px rgba(0,0,0,0.4);
+    }
+    div.stButton > button:active {
+        background-color: #b08d1e;
     }
     div[data-testid="stTextInput"] label,
     div[data-testid="stNumberInput"] label,
     div[data-testid="stSlider"] label,
     div[data-testid="stSelectbox"] label {
-        color: #cbd5e1 !important;
+        color: #d4d4d4 !important;
         font-weight: 500;
+    }
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stSelectbox"] > div > div {
+        background-color: #151515 !important;
+        color: #f1f1f1 !important;
+        border: 1px solid #333333 !important;
+        border-radius: 6px !important;
+    }
+    div[data-testid="stSlider"] > div > div > div {
+        color: #d4af37 !important;
+    }
+    div[data-testid="stSlider"] [role="slider"] {
+        background-color: #d4af37 !important;
+    }
+    .stMarkdown, .stInfo, .stSuccess, .stError, .stWarning {
+        color: #f1f1f1;
+    }
+    .stInfo {
+        background-color: #1a1a1a;
+        border-left: 4px solid #d4af37;
+    }
+    .stSuccess {
+        background-color: #1a2f1a;
+        border-left: 4px solid #4ade80;
+    }
+    .stError {
+        background-color: #2f1a1a;
+        border-left: 4px solid #f87171;
     }
 </style>
 """, unsafe_allow_html=True)
