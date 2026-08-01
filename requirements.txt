@@ -3,3 +3,4 @@ imagehash
 opencv-python-headless
 numpy
 streamlit
+psycopg2-binary
