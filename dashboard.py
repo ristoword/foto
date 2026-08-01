@@ -138,6 +138,55 @@ with st.sidebar:
 
 IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.gif'}
 VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv'}
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+def _save_upload(uploaded_file, subfolder=None):
+    if uploaded_file is None:
+        return None
+    folder = UPLOAD_DIR / subfolder if subfolder else UPLOAD_DIR
+    folder.mkdir(exist_ok=True)
+    fpath = folder / uploaded_file.name
+    with open(fpath, "wb") as f:
+        f.write(uploaded_file.getvalue())
+    return str(fpath)
+
+
+def _save_uploads(uploaded_files, subfolder=None):
+    if not uploaded_files:
+        return []
+    folder = UPLOAD_DIR / subfolder if subfolder else UPLOAD_DIR
+    folder.mkdir(exist_ok=True)
+    paths = []
+    for up in uploaded_files:
+        fpath = folder / up.name
+        with open(fpath, "wb") as f:
+            f.write(up.getvalue())
+        paths.append(str(fpath))
+    return paths
+
+
+def _file_or_upload(label, key, accept=None, subfolder=None):
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        uploaded = st.file_uploader(f"Carica {label}", type=accept, key=f"upl_{key}")
+    with c2:
+        path = st.text_input(f"Oppure percorso {label}", key=f"path_{key}")
+    saved = _save_upload(uploaded, subfolder)
+    return saved if saved else path
+
+
+def _folder_or_uploads(label, key, accept=None, subfolder=None):
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        uploaded = st.file_uploader(f"Carica {label} (multiplo)", accept_multiple_files=True, type=accept, key=f"upl_{key}")
+    with c2:
+        folder = st.text_input(f"Oppure cartella {label}", key=f"path_{key}")
+    if uploaded:
+        paths = _save_uploads(uploaded, subfolder)
+        return str(Path(paths[0]).parent)
+    return folder
 
 
 def _list_files(folder, exts):
@@ -152,7 +201,7 @@ tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Edit
 with tabs[0]:
     st.header("Rilevamento foto duplicate")
     st.markdown("Trova foto duplicate o quasi identiche tramite hashing percettivo.")
-    dup_folder = st.text_input("Cartella immagini", key="dup_folder")
+    dup_folder = _folder_or_uploads("foto", "dup_folder", accept=["jpg", "jpeg", "png", "webp", "bmp", "tiff"], subfolder="duplicates")
     dup_threshold = st.slider("Soglia distanza Hamming", 0, 20, 10, key="dup_threshold")
     if st.button("Cerca duplicati", key="dup_search"):
         if not dup_folder or not Path(dup_folder).is_dir():
@@ -187,7 +236,7 @@ with tabs[1]:
     st.markdown("Correggi esposizione, contrasto e nitidezza delle immagini.")
     c1, c2 = st.columns(2)
     with c1:
-        enh_in = st.text_input("Cartella foto in ingresso", key="enh_in")
+        enh_in = _folder_or_uploads("foto", "enh_in", accept=["jpg", "jpeg", "png", "webp", "bmp", "tiff"], subfolder="enhance")
     with c2:
         enh_out = st.text_input("Cartella foto in uscita", key="enh_out")
     c3, c4, c5 = st.columns(3)
@@ -214,7 +263,7 @@ with tabs[2]:
     st.markdown("Genera un video con transizioni a dissolvenza a partire dalle tue foto.")
     c1, c2 = st.columns(2)
     with c1:
-        sld_input = st.text_input("Cartella foto (o percorsi separati da virgola)", key="sld_input")
+        sld_input = _folder_or_uploads("foto", "sld_input", accept=["jpg", "jpeg", "png", "webp", "bmp", "tiff"], subfolder="slideshow")
     with c2:
         sld_output = st.text_input("File video di output", value="slideshow.mp4", key="sld_output")
     c3, c4, c5 = st.columns(3)
@@ -251,7 +300,7 @@ with tabs[3]:
     st.markdown("Concatena piu clip in un unico video normalizzando risoluzione e framerate.")
     c1, c2 = st.columns(2)
     with c1:
-        mrg_input = st.text_input("Cartella video (o percorsi separati da virgola)", key="mrg_input")
+        mrg_input = _folder_or_uploads("video", "mrg_input", accept=["mp4", "mov", "avi", "mkv"], subfolder="merge")
     with c2:
         mrg_output = st.text_input("File video unito", value="merged.mp4", key="mrg_output")
     c3, c4 = st.columns(2)
@@ -282,7 +331,7 @@ with tabs[4]:
     operation = st.selectbox("Operazione", ["Taglia", "Aggiungi musica", "Applica filtro", "Estrai frame"], key="vid_op")
     c1, c2 = st.columns(2)
     with c1:
-        vid_input = st.text_input("Video di ingresso", key="vid_input")
+        vid_input = _file_or_upload("video", "vid_input", accept=["mp4", "mov", "avi", "mkv"], subfolder="video")
     with c2:
         vid_output = st.text_input("File/cartella di uscita", value="output.mp4", key="vid_output")
     if operation == "Taglia":
@@ -332,7 +381,7 @@ with tabs[5]:
     st.markdown("Ritaglia, ruota, ridimensiona e applica correzioni alle foto.")
     c1, c2 = st.columns(2)
     with c1:
-        edit_input = st.text_input("Foto in ingresso", key="edit_input")
+        edit_input = _file_or_upload("foto", "edit_input", accept=["jpg", "jpeg", "png", "webp", "bmp", "tiff"], subfolder="editor")
     with c2:
         edit_output = st.text_input("Foto in uscita", key="edit_output")
     if edit_input and Path(edit_input).is_file():
@@ -397,9 +446,9 @@ with tabs[6]:
     st.warning("Il risultato include un watermark 'GENERATED' ed è destinato a scopi leciti e creativi.")
     c1, c2 = st.columns(2)
     with c1:
-        face_src = st.text_input("Foto volto sorgente", key="face_src")
+        face_src = _file_or_upload("foto sorgente", "face_src", accept=["jpg", "jpeg", "png", "webp"], subfolder="faces")
     with c2:
-        face_dst = st.text_input("Foto corpo/volto destinazione", key="face_dst")
+        face_dst = _file_or_upload("foto destinazione", "face_dst", accept=["jpg", "jpeg", "png", "webp"], subfolder="faces")
     face_out = st.text_input("Foto di output", value="face_swap_output.jpg", key="face_out")
     consent = st.checkbox("Confermo di avere i diritti e il consenso per entrambe le immagini", key="face_consent")
     if st.button("Scambia volto", key="face_run"):
