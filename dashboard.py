@@ -141,6 +141,31 @@ IMAGE_DIR.mkdir(exist_ok=True)
 VIDEO_DIR.mkdir(exist_ok=True)
 
 
+def _save_upload(uploaded_file, subfolder=None):
+    if uploaded_file is None:
+        return None
+    folder = UPLOAD_DIR / subfolder if subfolder else UPLOAD_DIR
+    folder.mkdir(exist_ok=True)
+    fpath = folder / uploaded_file.name
+    with open(fpath, "wb") as f:
+        f.write(uploaded_file.getvalue())
+    return str(fpath)
+
+
+def _save_uploads(uploaded_files, subfolder=None):
+    if not uploaded_files:
+        return []
+    folder = UPLOAD_DIR / subfolder if subfolder else UPLOAD_DIR
+    folder.mkdir(exist_ok=True)
+    paths = []
+    for up in uploaded_files:
+        fpath = folder / up.name
+        with open(fpath, "wb") as f:
+            f.write(up.getvalue())
+        paths.append(str(fpath))
+    return paths
+
+
 def _refresh_library():
     imgs = sorted([str(f) for f in IMAGE_DIR.iterdir() if f.suffix.lower() in IMAGE_EXTS and f.is_file()])
     vids = sorted([str(f) for f in VIDEO_DIR.iterdir() if f.suffix.lower() in VIDEO_EXTS and f.is_file()])
@@ -189,31 +214,6 @@ with st.sidebar:
         st.markdown(f"**{len(vids)} video caricati**")
         for v in vids:
             st.write(Path(v).name)
-
-
-def _save_upload(uploaded_file, subfolder=None):
-    if uploaded_file is None:
-        return None
-    folder = UPLOAD_DIR / subfolder if subfolder else UPLOAD_DIR
-    folder.mkdir(exist_ok=True)
-    fpath = folder / uploaded_file.name
-    with open(fpath, "wb") as f:
-        f.write(uploaded_file.getvalue())
-    return str(fpath)
-
-
-def _save_uploads(uploaded_files, subfolder=None):
-    if not uploaded_files:
-        return []
-    folder = UPLOAD_DIR / subfolder if subfolder else UPLOAD_DIR
-    folder.mkdir(exist_ok=True)
-    paths = []
-    for up in uploaded_files:
-        fpath = folder / up.name
-        with open(fpath, "wb") as f:
-            f.write(up.getvalue())
-        paths.append(str(fpath))
-    return paths
 
 
 def _file_or_upload(label, key, accept=None, subfolder=None, library_key=None):
