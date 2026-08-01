@@ -76,6 +76,8 @@ def make_slideshow(input_paths: List[str], output: str, duration: float = 3.0,
     if current != out_label:
         filter_parts.append(f"{current}format=yuv420p{out_label}")
 
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+
     cmd = ['ffmpeg', '-y'] + inputs + ['-filter_complex', ';'.join(filter_parts), '-map', out_label]
 
     if music_index is not None:
@@ -86,7 +88,9 @@ def make_slideshow(input_paths: List[str], output: str, duration: float = 3.0,
 
     cmd += ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', output]
 
-    subprocess.run(cmd, check=True)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg ha fallito: {result.stderr}")
 
     for p in normalized:
         os.remove(p)
