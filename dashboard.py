@@ -131,6 +131,24 @@ st.markdown("""
 st.markdown('<div class="main-header"><h1>AppFoto Studio</h1></div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Gestione foto e video professionale in un clic</div>', unsafe_allow_html=True)
 
+IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.gif'}
+VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv'}
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+IMAGE_DIR = UPLOAD_DIR / "images"
+VIDEO_DIR = UPLOAD_DIR / "videos"
+IMAGE_DIR.mkdir(exist_ok=True)
+VIDEO_DIR.mkdir(exist_ok=True)
+
+
+def _refresh_library():
+    imgs = sorted([str(f) for f in IMAGE_DIR.iterdir() if f.suffix.lower() in IMAGE_EXTS and f.is_file()])
+    vids = sorted([str(f) for f in VIDEO_DIR.iterdir() if f.suffix.lower() in VIDEO_EXTS and f.is_file()])
+    st.session_state.library_images = imgs
+    st.session_state.library_videos = vids
+    return imgs, vids
+
+
 with st.sidebar:
     st.header("AppFoto Studio")
     st.markdown("""
@@ -141,12 +159,36 @@ with st.sidebar:
     - Unione video
     - Editor video (taglio, filtri, audio, frame)
     """)
-    st.info("Inserisci i percorsi delle cartelle o dei file, configura i parametri e premi il pulsante per eseguire.")
+    st.info("Carica foto e video nella libreria qui sotto. Saranno disponibili in tutta l'app.")
 
-IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.gif'}
-VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.flv', '.wmv'}
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+    st.subheader("📁 Libreria")
+    img_uploads = st.file_uploader("Carica foto", accept_multiple_files=True, type=["jpg", "jpeg", "png", "webp", "bmp", "tiff"], key="lib_img_uploader")
+    if img_uploads:
+        paths = _save_uploads(img_uploads, "images")
+        for p in paths:
+            db.log_upload(auth.current_user_id(), Path(p).name, p)
+    vid_uploads = st.file_uploader("Carica video", accept_multiple_files=True, type=["mp4", "mov", "avi", "mkv"], key="lib_vid_uploader")
+    if vid_uploads:
+        paths = _save_uploads(vid_uploads, "videos")
+        for p in paths:
+            db.log_upload(auth.current_user_id(), Path(p).name, p)
+
+    imgs, vids = _refresh_library()
+    if imgs:
+        st.markdown(f"**{len(imgs)} foto caricate**")
+        for i in range(0, min(len(imgs), 6), 3):
+            cols = st.columns(3)
+            for j, col in enumerate(cols):
+                if i + j < len(imgs):
+                    with col:
+                        try:
+                            st.image(imgs[i + j], use_container_width=True)
+                        except Exception:
+                            st.write(Path(imgs[i + j]).name)
+    if vids:
+        st.markdown(f"**{len(vids)} video caricati**")
+        for v in vids:
+            st.write(Path(v).name)
 
 
 def _save_upload(uploaded_file, subfolder=None):
@@ -174,14 +216,22 @@ def _save_uploads(uploaded_files, subfolder=None):
     return paths
 
 
-def _file_or_upload(label, key, accept=None, subfolder=None):
+def _file_or_upload(label, key, accept=None, subfolder=None, library_key=None):
     c1, c2 = st.columns([1, 1])
     with c1:
         uploaded = st.file_uploader(f"Carica {label}", type=accept, key=f"upl_{key}")
     with c2:
         path = st.text_input(f"Oppure percorso {label}", key=f"path_{key}")
     saved = _save_upload(uploaded, subfolder)
-    return saved if saved else path
+    if saved:
+        return saved
+    if library_key:
+        lib = st.session_state.get(library_key, [])
+        options = [""] + lib
+        selected = st.selectbox(f"Oppure scegli dalla libreria", options, key=f"libsel_{key}")
+        if selected:
+            return selected
+    return path
 
 
 def _folder_or_uploads(label, key, accept=None, subfolder=None):
@@ -343,7 +393,7 @@ with tabs[4]:
     operation = st.selectbox("Operazione", ["Taglia", "Aggiungi musica", "Applica filtro", "Estrai frame"], key="vid_op")
     c1, c2 = st.columns(2)
     with c1:
-        vid_input = _file_or_upload("video", "vid_input", accept=["mp4", "mov", "avi", "mkv"], subfolder="video")
+        vid_input = _file_or_upload("video", "vid_input", accept=["mp4", "mov", "avi", "mkv"], subfolder="video", library_key="library_videos")
     with c2:
         vid_output = st.text_input("File/cartella di uscita", value="output.mp4", key="vid_output")
     if operation == "Taglia":
@@ -397,7 +447,7 @@ with tabs[5]:
     st.markdown("Ritaglia, ruota, ridimensiona e applica correzioni alle foto.")
     c1, c2 = st.columns(2)
     with c1:
-        edit_input = _file_or_upload("foto", "edit_input", accept=["jpg", "jpeg", "png", "webp", "bmp", "tiff"], subfolder="editor")
+        edit_input = _file_or_upload("foto", "edit_input", accept=["jpg", "jpeg", "png", "webp", "bmp", "tiff"], subfolder="editor", library_key="library_images")
     with c2:
         edit_output = st.text_input("Foto in uscita", key="edit_output")
     if edit_input and Path(edit_input).is_file():
@@ -463,9 +513,9 @@ with tabs[6]:
     st.warning("Il risultato include un watermark 'GENERATED' ed è destinato a scopi leciti e creativi.")
     c1, c2 = st.columns(2)
     with c1:
-        face_src = _file_or_upload("foto sorgente", "face_src", accept=["jpg", "jpeg", "png", "webp"], subfolder="faces")
+        face_src = _file_or_upload("foto sorgente", "face_src", accept=["jpg", "jpeg", "png", "webp"], subfolder="faces", library_key="library_images")
     with c2:
-        face_dst = _file_or_upload("foto destinazione", "face_dst", accept=["jpg", "jpeg", "png", "webp"], subfolder="faces")
+        face_dst = _file_or_upload("foto destinazione", "face_dst", accept=["jpg", "jpeg", "png", "webp"], subfolder="faces", library_key="library_images")
     face_out = st.text_input("Foto di output", value="face_swap_output.jpg", key="face_out")
     consent = st.checkbox("Confermo di avere i diritti e il consenso per entrambe le immagini", key="face_consent")
     if st.button("Scambia volto", key="face_run"):
