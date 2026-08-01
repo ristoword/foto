@@ -10,6 +10,13 @@ import video_slideshow
 import video_merger
 import video_editor
 import auth
+import db
+
+
+def _log(job_type, input_summary, output_path, status="ok"):
+    user_id = auth.current_user_id()
+    if user_id:
+        db.log_job(user_id, job_type, input_summary, output_path, status)
 
 
 st.set_page_config(page_title="AppFoto Studio", layout="wide")
@@ -196,7 +203,7 @@ def _list_files(folder, exts):
     return sorted([str(f) for f in p.iterdir() if f.suffix.lower() in exts and f.is_file()])
 
 
-tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap"])
+tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap", "Storico", "Admin"])
 
 with tabs[0]:
     st.header("Rilevamento foto duplicate")
@@ -214,6 +221,7 @@ with tabs[0]:
                     st.error(str(e))
                 else:
                     st.success(f"Trovati {report['duplicate_groups']} gruppi di duplicati su {report['total_images']} immagini")
+                    _log("duplicates", dup_folder, "", "ok")
                     for i, group in enumerate(report['groups'], 1):
                         st.subheader(f"Gruppo {i} — migliore: {Path(group['best']).name}")
                         table = {"file": [], "risoluzione": []}
@@ -230,6 +238,7 @@ with tabs[0]:
                                     st.error(str(e))
                                 else:
                                     st.success("Copie duplicate eliminate. E rimasta solo quella con risoluzione maggiore per gruppo.")
+                                    _log("duplicates_delete", dup_folder, "", "ok")
 
 with tabs[1]:
     st.header("Migliora foto")
@@ -257,6 +266,7 @@ with tabs[1]:
                     st.error(str(e))
                 else:
                     st.success(f"Foto migliorate salvate in: {enh_out}")
+                    _log("enhance", enh_in, enh_out, "ok")
 
 with tabs[2]:
     st.header("Crea slideshow da foto")
@@ -294,6 +304,7 @@ with tabs[2]:
                     st.error(str(e))
                 else:
                     st.success(f"Slideshow salvato in: {sld_output}")
+                    _log("slideshow", sld_input, sld_output, "ok")
 
 with tabs[3]:
     st.header("Unisci video")
@@ -324,6 +335,7 @@ with tabs[3]:
                     st.error(str(e))
                 else:
                     st.success(f"Video unito salvato in: {mrg_output}")
+                    _log("merge", mrg_input, mrg_output, "ok")
 
 with tabs[4]:
     st.header("Editor Video")
@@ -345,6 +357,7 @@ with tabs[4]:
                 try:
                     video_editor.trim_video(vid_input, vid_output, start_t, end_t)
                     st.success(f"Video tagliato: {vid_output}")
+                    _log("video_trim", vid_input, vid_output, "ok")
                 except Exception as e:
                     st.error(str(e))
     elif operation == "Aggiungi musica":
@@ -355,6 +368,7 @@ with tabs[4]:
                 try:
                     video_editor.add_music_to_video(vid_input, audio_file, vid_output, loop_audio)
                     st.success(f"Audio aggiunto: {vid_output}")
+                    _log("video_music", vid_input, vid_output, "ok")
                 except Exception as e:
                     st.error(str(e))
     elif operation == "Applica filtro":
@@ -364,6 +378,7 @@ with tabs[4]:
                 try:
                     video_editor.apply_filter(vid_input, vid_output, filter_name)
                     st.success(f"Filtro applicato: {vid_output}")
+                    _log("video_filter", vid_input, vid_output, "ok")
                 except Exception as e:
                     st.error(str(e))
     elif operation == "Estrai frame":
@@ -373,6 +388,7 @@ with tabs[4]:
                 try:
                     video_editor.extract_frames(vid_input, vid_output, interval)
                     st.success(f"Frame estratti in: {vid_output}")
+                    _log("video_frames", vid_input, vid_output, "ok")
                 except Exception as e:
                     st.error(str(e))
 
@@ -437,6 +453,7 @@ with tabs[5]:
                     photo_editor.process_image(edit_input, edit_output, **kwargs)
                     st.image(photo_editor.load_image(edit_output), caption="Anteprima risultato", use_container_width=True)
                     st.success(f"Foto salvata in: {edit_output}")
+                    _log("photo_edit", edit_input, edit_output, "ok")
                 except Exception as e:
                     st.error(str(e))
 
@@ -462,5 +479,84 @@ with tabs[6]:
                     out_path = face_swap.swap_face(face_src, face_dst, face_out)
                     st.image(photo_editor.load_image(out_path), caption="Risultato", use_container_width=True)
                     st.success(f"Foto salvata in: {out_path}")
+                    _log("face_swap", f"{face_src} -> {face_dst}", out_path, "ok")
                 except Exception as e:
                     st.error(str(e))
+
+with tabs[7]:
+    st.header("Storico")
+    st.markdown("Storico dei lavori eseguiti.")
+    user_id = auth.current_user_id()
+    if auth.current_user_is_admin():
+        show_all = st.checkbox("Mostra tutti gli utenti", key="show_all_jobs")
+        jobs = db.list_jobs() if show_all else db.list_jobs(user_id)
+    else:
+        jobs = db.list_jobs(user_id)
+    if not jobs:
+        st.info("Nessun lavoro trovato.")
+    else:
+        cols = ["id", "utente", "tipo", "input", "output", "stato", "data"]
+        if not auth.current_user_is_admin():
+            cols = [c for c in cols if c != "utente"]
+        data = {c: [] for c in cols}
+        for row in jobs:
+            if auth.current_user_is_admin() and show_all:
+                data["id"].append(row[0])
+                data["utente"].append(row[1])
+                data["tipo"].append(row[2])
+                data["input"].append(row[3])
+                data["output"].append(row[4])
+                data["stato"].append(row[5])
+                data["data"].append(row[6])
+            else:
+                data["id"].append(row[0])
+                data["tipo"].append(row[1])
+                data["input"].append(row[2])
+                data["output"].append(row[3])
+                data["stato"].append(row[4])
+                data["data"].append(row[5])
+        st.dataframe(data)
+
+with tabs[8]:
+    st.header("Gestione utenti")
+    if not auth.current_user_is_admin():
+        st.error("Accesso riservato agli admin.")
+    else:
+        st.markdown("Crea nuovi utenti o visualizza/elimin quelli esistenti.")
+        with st.form("create_user"):
+            st.markdown("### Crea nuovo utente")
+            new_username = st.text_input("Username", key="admin_new_user")
+            new_password = st.text_input("Password", type="password", key="admin_new_pwd")
+            is_admin_new = st.checkbox("Admin", key="admin_is_admin")
+            create_btn = st.form_submit_button("Crea utente")
+        if create_btn:
+            if not new_username or not new_password:
+                st.error("Inserisci username e password.")
+            elif db.user_exists(new_username):
+                st.error("Username già esistente.")
+            else:
+                if db.create_user(new_username, new_password, is_admin_new):
+                    st.success(f"Utente {new_username} creato.")
+                else:
+                    st.error("Errore nella creazione.")
+
+        users = db.list_users()
+        if users:
+            st.markdown("### Utenti esistenti")
+            u_data = {"id": [], "username": [], "admin": [], "creato": []}
+            for u in users:
+                u_data["id"].append(u[0])
+                u_data["username"].append(u[1])
+                u_data["admin"].append(u[2])
+                u_data["creato"].append(u[3])
+            st.dataframe(u_data)
+
+            to_delete = st.number_input("ID utente da eliminare", min_value=0, step=1, key="admin_del_id")
+            if st.button("Elimina utente", key="admin_del_btn"):
+                current = auth.current_user_id()
+                if to_delete == current:
+                    st.error("Non puoi eliminare te stesso.")
+                elif db.delete_user(to_delete):
+                    st.success(f"Utente {to_delete} eliminato.")
+                else:
+                    st.error("Errore nell'eliminazione.")

@@ -28,7 +28,7 @@ def _login_with_db(username, password):
 
 def _create_first_user(username, password):
     if _use_db() and not db.user_exists(username):
-        return db.create_user(username, password)
+        return db.create_user(username, password, is_admin=True)
     return False
 
 
@@ -75,6 +75,7 @@ def login_form():
         if ok:
             st.session_state.authenticated = True
             st.session_state.username = username
+            st.session_state.is_admin = db.is_admin(st.session_state.get("user_id"))
             st.rerun()
         else:
             st.error("Credenziali errate.")
@@ -89,3 +90,7 @@ def require_login():
 
 def current_user_id():
     return st.session_state.get("user_id")
+
+
+def current_user_is_admin():
+    return st.session_state.get("is_admin", False) or db.is_admin(current_user_id())

@@ -49,6 +49,7 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 password_hash VARCHAR(128) NOT NULL,
+                is_admin BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT NOW()
             );
         """)
@@ -122,18 +123,95 @@ def has_users():
     return exists
 
 
-def create_user(username, password):
+def create_user(username, password, is_admin=False):
     conn = get_connection()
     if not conn:
         return False
     with conn.cursor() as cur:
         cur.execute(
-            f"INSERT INTO {SCHEMA}.users (username, password_hash) VALUES (%s, %s)",
-            (username, _hash_password(password)),
+            f"INSERT INTO {SCHEMA}.users (username, password_hash, is_admin) VALUES (%s, %s, %s)",
+            (username, _hash_password(password), is_admin),
         )
         conn.commit()
     conn.close()
     return True
+
+
+def is_admin(user_id):
+    conn = get_connection()
+    if not conn or not user_id:
+        return False
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT is_admin FROM {SCHEMA}.users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+
+def list_users():
+    conn = get_connection()
+    if not conn:
+        return []
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT id, username, is_admin, created_at FROM {SCHEMA}.users ORDER BY created_at DESC")
+        rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def delete_user(user_id):
+    conn = get_connection()
+    if not conn:
+        return False
+    with conn.cursor() as cur:
+        cur.execute(f"DELETE FROM {SCHEMA}.users WHERE id = %s", (user_id,))
+        conn.commit()
+    conn.close()
+    return True
+
+
+def list_jobs(user_id=None):
+    conn = get_connection()
+    if not conn:
+        return []
+    with conn.cursor() as cur:
+        if user_id:
+            cur.execute(
+                f"SELECT id, job_type, input_summary, output_path, status, created_at FROM {SCHEMA}.jobs WHERE user_id = %s ORDER BY created_at DESC",
+                (user_id,),
+            )
+        else:
+            cur.execute(f"""
+                SELECT j.id, u.username, j.job_type, j.input_summary, j.output_path, j.status, j.created_at
+                FROM {SCHEMA}.jobs j
+                JOIN {SCHEMA}.users u ON j.user_id = u.id
+                ORDER BY j.created_at DESC
+            """)
+        rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def list_uploads(user_id=None):
+    conn = get_connection()
+    if not conn:
+        return []
+    with conn.cursor() as cur:
+        if user_id:
+            cur.execute(
+                f"SELECT id, filename, saved_path, created_at FROM {SCHEMA}.uploads WHERE user_id = %s ORDER BY created_at DESC",
+                (user_id,),
+            )
+        else:
+            cur.execute(f"""
+                SELECT u.id, us.username, u.filename, u.saved_path, u.created_at
+                FROM {SCHEMA}.uploads u
+                JOIN {SCHEMA}.users us ON u.user_id = us.id
+                ORDER BY u.created_at DESC
+            """)
+        rows = cur.fetchall()
+    conn.close()
+    return rows
 
 
 def log_job(user_id, job_type, input_summary, output_path, status="ok"):
