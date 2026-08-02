@@ -378,7 +378,7 @@ with tabs[2]:
     with c1:
         sld_input = _folder_or_uploads("foto", "sld_input", accept=["jpg", "jpeg", "png", "webp", "bmp", "tiff"], kind="photos", library_key="library_images")
     with c2:
-        sld_output = st.text_input("File video di output", value="slideshow.mp4", key="sld_output")
+        sld_output = st.text_input("File video di output", value=str(library.EDITED_VIDEOS / "slideshow_v1.mp4"), key="sld_output")
     c3, c4, c5 = st.columns(3)
     with c3:
         sld_duration = st.number_input("Durata immagine (s)", value=3.0, min_value=0.1, step=0.5, key="sld_duration")
@@ -402,13 +402,14 @@ with tabs[2]:
         else:
             with st.spinner("Creazione video in corso... Questo puo richiedere tempo"):
                 try:
-                    video_slideshow.make_slideshow(paths, sld_output, sld_duration, sld_transition, sld_resolution, sld_fps, sld_music or None)
+                    out_path = library.next_version(sld_output)
+                    video_slideshow.make_slideshow(paths, out_path, sld_duration, sld_transition, sld_resolution, sld_fps, sld_music or None)
                 except Exception as e:
                     st.error(str(e))
                 else:
-                    st.success(f"Slideshow salvato in: {sld_output}")
-                    st.video(sld_output)
-                    _log("slideshow", sld_input, sld_output, "ok")
+                    st.success(f"Slideshow salvato in: {out_path}")
+                    st.video(out_path)
+                    _log("slideshow", sld_input, out_path, "ok")
 
 with tabs[3]:
     st.header("Unisci video")
@@ -417,7 +418,7 @@ with tabs[3]:
     with c1:
         mrg_input = _folder_or_uploads("video", "mrg_input", accept=["mp4", "mov", "avi", "mkv"], kind="videos", library_key="library_videos")
     with c2:
-        mrg_output = st.text_input("File video unito", value="merged.mp4", key="mrg_output")
+        mrg_output = st.text_input("File video unito", value=str(library.EDITED_VIDEOS / "merged_v1.mp4"), key="mrg_output")
     c3, c4 = st.columns(2)
     with c3:
         mrg_resolution = st.selectbox("Risoluzione", ["1920x1080", "1280x720", "3840x2160"], key="mrg_resolution")
@@ -434,13 +435,14 @@ with tabs[3]:
         else:
             with st.spinner("Unione video in corso..."):
                 try:
-                    video_merger.merge_videos(paths, mrg_output, mrg_resolution, mrg_fps)
+                    out_path = library.next_version(mrg_output)
+                    video_merger.merge_videos(paths, out_path, mrg_resolution, mrg_fps)
                 except Exception as e:
                     st.error(str(e))
                 else:
-                    st.success(f"Video unito salvato in: {mrg_output}")
-                    st.video(mrg_output)
-                    _log("merge", mrg_input, mrg_output, "ok")
+                    st.success(f"Video unito salvato in: {out_path}")
+                    st.video(out_path)
+                    _log("merge", mrg_input, out_path, "ok")
 
 with tabs[4]:
     st.header("Editor Video")
@@ -450,7 +452,7 @@ with tabs[4]:
     with c1:
         vid_input = _file_or_upload("video", "vid_input", accept=["mp4", "mov", "avi", "mkv"], kind="videos", library_key="library_videos")
     with c2:
-        vid_output = st.text_input("File/cartella di uscita", value="output.mp4", key="vid_output")
+        vid_output = st.text_input("File/cartella di uscita", value=str(library.EDITED_VIDEOS / "output_v1.mp4"), key="vid_output")
     if operation == "Taglia":
         c3, c4 = st.columns(2)
         with c3:
@@ -460,10 +462,11 @@ with tabs[4]:
         if st.button("Taglia video", key="vid_trim"):
             with st.spinner("Taglio in corso..."):
                 try:
-                    video_editor.trim_video(vid_input, vid_output, start_t, end_t)
-                    st.success(f"Video tagliato: {vid_output}")
-                    st.video(vid_output)
-                    _log("video_trim", vid_input, vid_output, "ok")
+                    out_path = library.next_version(vid_output)
+                    video_editor.trim_video(vid_input, out_path, start_t, end_t)
+                    st.success(f"Video tagliato: {out_path}")
+                    st.video(out_path)
+                    _log("video_trim", vid_input, out_path, "ok")
                 except Exception as e:
                     st.error(str(e))
     elif operation == "Aggiungi musica":
@@ -472,10 +475,11 @@ with tabs[4]:
         if st.button("Aggiungi musica", key="vid_music_btn"):
             with st.spinner("Aggiunta audio..."):
                 try:
-                    video_editor.add_music_to_video(vid_input, audio_file, vid_output, loop_audio)
-                    st.success(f"Audio aggiunto: {vid_output}")
-                    st.video(vid_output)
-                    _log("video_music", vid_input, vid_output, "ok")
+                    out_path = library.next_version(vid_output)
+                    video_editor.add_music_to_video(vid_input, audio_file, out_path, loop_audio)
+                    st.success(f"Audio aggiunto: {out_path}")
+                    st.video(out_path)
+                    _log("video_music", vid_input, out_path, "ok")
                 except Exception as e:
                     st.error(str(e))
     elif operation == "Applica filtro":
@@ -483,10 +487,11 @@ with tabs[4]:
         if st.button("Applica filtro", key="vid_filter_btn"):
             with st.spinner("Applicazione filtro..."):
                 try:
-                    video_editor.apply_filter(vid_input, vid_output, filter_name)
-                    st.success(f"Filtro applicato: {vid_output}")
-                    st.video(vid_output)
-                    _log("video_filter", vid_input, vid_output, "ok")
+                    out_path = library.next_version(vid_output)
+                    video_editor.apply_filter(vid_input, out_path, filter_name)
+                    st.success(f"Filtro applicato: {out_path}")
+                    st.video(out_path)
+                    _log("video_filter", vid_input, out_path, "ok")
                 except Exception as e:
                     st.error(str(e))
     elif operation == "Estrai frame":
