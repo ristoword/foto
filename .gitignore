@@ -22,6 +22,10 @@ outputs/
 *.mov
 *.mkv
 
+# Env
+.env
+.env.local
+
 # Streamlit
 .streamlit/
 
