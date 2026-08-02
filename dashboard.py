@@ -249,6 +249,33 @@ with st.sidebar:
             st.write(Path(m).name)
 
 
+def _image_picker(label, key, library_key):
+    lib = st.session_state.get(library_key, [])
+    if not lib:
+        st.info("Nessun file nella libreria")
+        return None
+    selected_key = f"selected_{key}"
+    selected = st.session_state.get(selected_key)
+    st.markdown(f"**{label} — seleziona dalla libreria**")
+    for i in range(0, min(len(lib), 20), 4):
+        cols = st.columns(4)
+        for j, col in enumerate(cols):
+            idx = i + j
+            if idx < len(lib):
+                with col:
+                    try:
+                        st.image(lib[idx], use_container_width=True)
+                    except Exception:
+                        st.write(Path(lib[idx]).name)
+                    if st.button("Seleziona", key=f"sel_{key}_{idx}"):
+                        st.session_state[selected_key] = lib[idx]
+                        st.rerun()
+    if selected:
+        p = Path(selected).name
+        st.markdown(f"✅ Selezionato: **{p}**")
+    return selected
+
+
 def _file_or_upload(label, key, accept=None, kind="photos", library_key="library_images"):
     c1, c2 = st.columns([1, 1])
     with c1:
@@ -258,9 +285,7 @@ def _file_or_upload(label, key, accept=None, kind="photos", library_key="library
     saved = _save_upload(uploaded, kind)
     if saved:
         return saved
-    lib = st.session_state.get(library_key, [])
-    options = [""] + lib
-    selected = st.selectbox(f"Oppure scegli dalla libreria", options, key=f"libsel_{key}")
+    selected = _image_picker(label, key, library_key)
     if selected:
         return selected
     if path:
