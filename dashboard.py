@@ -301,7 +301,7 @@ def _list_files(folder, exts):
     return sorted([str(f) for f in p.iterdir() if f.suffix.lower() in exts and f.is_file()])
 
 
-tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap", "Storico", "Admin"])
+tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap", "Storico", "Admin", "Musica", "Riepilogo"])
 
 with tabs[0]:
     st.header("Rilevamento foto duplicate")
@@ -385,7 +385,7 @@ with tabs[2]:
     with c6:
         sld_resolution = st.selectbox("Risoluzione", ["1920x1080", "1280x720", "3840x2160"], key="sld_resolution")
     with c7:
-        sld_music = st.text_input("Musica di sottofondo (opzionale)", key="sld_music")
+        sld_music = st.selectbox("Musica di sottofondo (opzionale)", [""] + library.list_music(), key="sld_music")
     if st.button("Crea slideshow", key="sld_run"):
         p = Path(sld_input.strip())
         if p.is_dir():
@@ -402,6 +402,7 @@ with tabs[2]:
                     st.error(str(e))
                 else:
                     st.success(f"Slideshow salvato in: {sld_output}")
+                    st.video(sld_output)
                     _log("slideshow", sld_input, sld_output, "ok")
 
 with tabs[3]:
@@ -433,6 +434,7 @@ with tabs[3]:
                     st.error(str(e))
                 else:
                     st.success(f"Video unito salvato in: {mrg_output}")
+                    st.video(mrg_output)
                     _log("merge", mrg_input, mrg_output, "ok")
 
 with tabs[4]:
@@ -455,17 +457,19 @@ with tabs[4]:
                 try:
                     video_editor.trim_video(vid_input, vid_output, start_t, end_t)
                     st.success(f"Video tagliato: {vid_output}")
+                    st.video(vid_output)
                     _log("video_trim", vid_input, vid_output, "ok")
                 except Exception as e:
                     st.error(str(e))
     elif operation == "Aggiungi musica":
-        audio_file = st.text_input("File audio", key="vid_audio")
+        audio_file = st.selectbox("File audio", [""] + library.list_music(), key="vid_audio")
         loop_audio = st.checkbox("Ripeti audio se piu corto del video", key="vid_loop")
         if st.button("Aggiungi musica", key="vid_music_btn"):
             with st.spinner("Aggiunta audio..."):
                 try:
                     video_editor.add_music_to_video(vid_input, audio_file, vid_output, loop_audio)
                     st.success(f"Audio aggiunto: {vid_output}")
+                    st.video(vid_output)
                     _log("video_music", vid_input, vid_output, "ok")
                 except Exception as e:
                     st.error(str(e))
@@ -476,6 +480,7 @@ with tabs[4]:
                 try:
                     video_editor.apply_filter(vid_input, vid_output, filter_name)
                     st.success(f"Filtro applicato: {vid_output}")
+                    st.video(vid_output)
                     _log("video_filter", vid_input, vid_output, "ok")
                 except Exception as e:
                     st.error(str(e))
@@ -676,3 +681,42 @@ with tabs[8]:
                     st.success(f"Utente {to_delete} eliminato.")
                 else:
                     st.error("Errore nell'eliminazione.")
+
+with tabs[9]:
+    st.header("Libreria musica")
+    st.markdown("Carica e gestisci tracce audio da usare in slideshow e video.")
+    uploaded = st.file_uploader("Carica musica", accept_multiple_files=True, type=["mp3", "wav", "aac", "flac", "ogg", "m4a"], key="music_tab_uploader")
+    if uploaded:
+        for up in uploaded:
+            _save_upload(up, "music")
+        _refresh_library()
+    music = library.list_music()
+    if music:
+        for m in music:
+            st.audio(m)
+    else:
+        st.info("Nessun brano caricato.")
+
+with tabs[10]:
+    st.header("Riepilogo")
+    st.markdown("Dashboard di controllo della tua libreria e attività.")
+    imgs, vids, music = _refresh_library()
+    edited_photos = library.list_edited("photos")
+    edited_videos = library.list_edited("videos")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Foto originali", len(imgs))
+    c2.metric("Video originali", len(vids))
+    c3.metric("Foto modificate", len(edited_photos))
+    c4.metric("Video prodotti", len(edited_videos))
+    total_size = 0
+    for f in (library.BASE).rglob("*"):
+        if f.is_file():
+            total_size += f.stat().st_size
+    st.metric("Spazio occupato", f"{total_size / (1024*1024):.1f} MB")
+    user_id = auth.current_user_id()
+    if user_id:
+        jobs = db.list_jobs(user_id)[:5]
+        if jobs:
+            st.markdown("### Ultimi lavori")
+            for j in jobs:
+                st.write(f"**{j[1]}** — {j[2][:60]} — _{j[4]}_")
