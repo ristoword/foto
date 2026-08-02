@@ -18,6 +18,7 @@ def trim_video(input_path: str, output_path: str, start: float, end: float):
         raise FileNotFoundError(f"File non trovato: {input_path}")
     if end <= start:
         raise ValueError("La fine deve essere maggiore dell'inizio")
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         'ffmpeg', '-y', '-i', input_path,
         '-ss', str(start), '-to', str(end),
@@ -32,6 +33,7 @@ def add_music_to_video(video_path: str, audio_path: str, output_path: str, loop:
     _check_ffmpeg()
     if not Path(video_path).is_file() or not Path(audio_path).is_file():
         raise FileNotFoundError("File video o audio non trovato")
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     cmd = ['ffmpeg', '-y', '-i', video_path]
     if loop:
         cmd += ['-stream_loop', '-1']
@@ -57,6 +59,7 @@ def apply_filter(input_path: str, output_path: str, filter_name: str = "grayscal
         "vignette": "vignette",
         "sharpen": "unsharp"
     }
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     vf = filters.get(filter_name, filter_name)
     cmd = [
         'ffmpeg', '-y', '-i', input_path,

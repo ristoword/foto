@@ -24,6 +24,7 @@ def merge_videos(input_paths: List[str], output: str, resolution: str = '1920x10
         raise ValueError("No input videos provided")
     if not shutil.which('ffmpeg'):
         raise EnvironmentError("ffmpeg binary not found in PATH")
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
 
     width, height = map(int, resolution.split('x'))
     inputs = []

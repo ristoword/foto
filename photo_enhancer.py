@@ -50,6 +50,7 @@ def enhance_image(input_path: str, output_path: str, gamma: float = 1.2, sharp_s
     result = sharpen(result, sharp_strength)
 
     blurry, variance = is_blurry(image, blur_threshold)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(output_path, result)
 
     if report_blur:
