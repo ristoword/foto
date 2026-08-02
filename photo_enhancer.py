@@ -69,6 +69,20 @@ def enhance_folder(input_folder: str, output_folder: str, gamma: float = 1.2, sh
             enhance_image(str(path), out, gamma, sharp_strength, blur_threshold)
 
 
+def enhance_files(paths: list, output_folder: str, gamma: float = 1.2, sharp_strength: float = 1.0,
+                  blur_threshold: float = 100.0) -> list:
+    """Enhance a list of image files and save to output_folder."""
+    os.makedirs(output_folder, exist_ok=True)
+    saved = []
+    for p in paths:
+        path = Path(p)
+        if path.is_file() and path.suffix.lower() in {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}:
+            out = os.path.join(output_folder, path.name)
+            enhance_image(str(path), out, gamma, sharp_strength, blur_threshold)
+            saved.append(out)
+    return saved
+
+
 def main():
     parser = argparse.ArgumentParser(description="Enhance photos automatically.")
     sub = parser.add_subparsers(dest="command", required=True)

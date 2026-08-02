@@ -344,8 +344,9 @@ with tabs[1]:
     c1, c2 = st.columns(2)
     with c1:
         enh_in = _folder_or_uploads("foto", "enh_in", accept=["jpg", "jpeg", "png", "webp", "bmp", "tiff"], kind="photos", library_key="library_images")
+        enh_batch = st.multiselect("Oppure seleziona foto (batch)", st.session_state.get("library_images", []), key="enh_batch")
     with c2:
-        enh_out = st.text_input("Cartella foto in uscita", key="enh_out")
+        enh_out = st.text_input("Cartella foto in uscita", value=str(library.EDITED_PHOTOS), key="enh_out")
     c3, c4, c5 = st.columns(3)
     with c3:
         gamma = st.number_input("Gamma", value=1.2, step=0.1, min_value=0.1, key="enh_gamma")
@@ -354,17 +355,21 @@ with tabs[1]:
     with c5:
         blur = st.number_input("Soglia sfocatura", value=100.0, step=10.0, min_value=0.0, key="enh_blur")
     if st.button("Migliora foto", key="enh_run"):
-        if not enh_in or not enh_out:
-            st.error("Inserisci entrambe le cartelle")
+        targets = enh_batch if enh_batch else ([enh_in] if enh_in and Path(enh_in).is_dir() else [])
+        if not targets or not enh_out:
+            st.error("Inserisci una cartella o seleziona foto e la cartella di uscita")
         else:
             with st.spinner("Elaborazione in corso..."):
                 try:
-                    photo_enhancer.enhance_folder(enh_in, enh_out, gamma, sharp, blur)
+                    if enh_batch:
+                        photo_enhancer.enhance_files(enh_batch, enh_out, gamma, sharp, blur)
+                    else:
+                        photo_enhancer.enhance_folder(enh_in, enh_out, gamma, sharp, blur)
                 except Exception as e:
                     st.error(str(e))
                 else:
                     st.success(f"Foto migliorate salvate in: {enh_out}")
-                    _log("enhance", enh_in, enh_out, "ok")
+                    _log("enhance", str(targets), enh_out, "ok")
 
 with tabs[2]:
     st.header("Crea slideshow da foto")
