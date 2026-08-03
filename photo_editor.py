@@ -1,5 +1,6 @@
+import colorsys
 from pathlib import Path
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageColor, ImageEnhance, ImageFilter
 
 
 def load_image(path):
@@ -100,6 +101,118 @@ def _sepia(img):
     return img
 
 
+def apply_curves(img, points=None):
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    if points is None:
+        points = [(0, 0), (128, 128), (255, 255)]
+    lut = [0] * 256
+    for i in range(256):
+        # linear interpolation between points
+        y = i
+        for j in range(len(points) - 1):
+            x0, y0 = points[j]
+            x1, y1 = points[j + 1]
+            if x0 <= i <= x1:
+                if x1 == x0:
+                    y = y0
+                else:
+                    t = (i - x0) / (x1 - x0)
+                    y = int(y0 + t * (y1 - y0))
+                break
+        lut[i] = max(0, min(255, y))
+    return img.point(lut * 3)
+
+
+def adjust_color_balance(img, shadows=(0, 0, 0), midtones=(0, 0, 0), highlights=(0, 0, 0)):
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    r, g, b = img.split()
+    r = r.point(lambda x: max(0, min(255, x + (shadows[0] if x < 85 else midtones[0] if x < 170 else highlights[0]))))
+    g = g.point(lambda x: max(0, min(255, x + (shadows[1] if x < 85 else midtones[1] if x < 170 else highlights[1]))))
+    b = b.point(lambda x: max(0, min(255, x + (shadows[2] if x < 85 else midtones[2] if x < 170 else highlights[2]))))
+    return Image.merge("RGB", (r, g, b))
+
+
+def adjust_hsl(img, hue=0.0, saturation=1.0, lightness=0.0):
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    import colorsys
+    out = img.copy()
+    pixels = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b = pixels[x, y]
+            h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+            h = (h + hue / 360) % 1.0
+            s = max(0, min(1, s * saturation))
+            v = max(0, min(1, v + lightness))
+            nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
+            pixels[x, y] = (int(nr * 255), int(ng * 255), int(nb * 255))
+    return out
+
+
+def adjust_vibrance(img, amount=0.0):
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    import colorsys
+    out = img.copy()
+    pixels = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b = pixels[x, y]
+            h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+            boost = amount * (1 - s) * 0.3
+            s = max(0, min(1, s + boost))
+            nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
+            pixels[x, y] = (int(nr * 255), int(ng * 255), int(nb * 255))
+    return out
+
+
+def apply_vignette(img, intensity=0.0):
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    w, h = img.size
+    overlay = Image.new("L", img.size, 255)
+    for y in range(h):
+        for x in range(w):
+            dx = (x - w / 2) / (w / 2)
+            dy = (y - h / 2) / (h / 2)
+            d = min(1.0, (dx * dx + dy * dy) ** 0.5)
+            val = int(255 * (1 - intensity * d))
+            overlay.putpixel((x, y), val)
+    overlay = overlay.filter(ImageFilter.GaussianBlur(radius=max(w, h) / 10))
+    return Image.composite(img, Image.new("RGB", img.size, (0, 0, 0)), overlay)
+
+
+def apply_duotone(img, color1, color2):
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    gray = img.convert("L")
+    c1 = ImageColor.getrgb(color1) if isinstance(color1, str) else color1
+    c2 = ImageColor.getrgb(color2) if isinstance(color2, str) else color2
+    out = Image.new("RGB", img.size)
+    pixels = out.load()
+    for y in range(img.height):
+        for x in range(img.width):
+            t = gray.getpixel((x, y)) / 255
+            r = int(c1[0] + (c2[0] - c1[0]) * t)
+            g = int(c1[1] + (c2[1] - c1[1]) * t)
+            b = int(c1[2] + (c2[2] - c1[2]) * t)
+            pixels[x, y] = (r, g, b)
+    return out
+
+
+def mirror(img, horizontal=False, vertical=False):
+    if horizontal and vertical:
+        return img.transpose(Image.Transpose.ROTATE_180)
+    if horizontal:
+        return img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    if vertical:
+        return img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    return img
+
+
 def process_image(path, out, **kwargs):
     img = load_image(path)
     if "rotate" in kwargs:
@@ -108,6 +221,22 @@ def process_image(path, out, **kwargs):
         img = crop(img, *kwargs["crop_box"])
     if "width" in kwargs or "height" in kwargs:
         img = resize(img, kwargs.get("width"), kwargs.get("height"), kwargs.get("keep_aspect", True))
+    if "mirror_h" in kwargs and kwargs["mirror_h"]:
+        img = mirror(img, horizontal=True)
+    if "mirror_v" in kwargs and kwargs["mirror_v"]:
+        img = mirror(img, vertical=True)
+    if "curves" in kwargs:
+        img = apply_curves(img, kwargs["curves"])
+    if "color_balance" in kwargs:
+        img = adjust_color_balance(img, *kwargs["color_balance"])
+    if "hsl" in kwargs:
+        img = adjust_hsl(img, *kwargs["hsl"])
+    if "vibrance" in kwargs:
+        img = adjust_vibrance(img, kwargs["vibrance"])
+    if "vignette" in kwargs:
+        img = apply_vignette(img, kwargs["vignette"])
+    if "duotone" in kwargs:
+        img = apply_duotone(img, *kwargs["duotone"])
     if "brightness" in kwargs:
         img = adjust_brightness(img, kwargs["brightness"])
     if "contrast" in kwargs:

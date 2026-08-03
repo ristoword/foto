@@ -326,7 +326,7 @@ def _list_files(folder, exts):
     return sorted([str(f) for f in p.iterdir() if f.suffix.lower() in exts and f.is_file()])
 
 
-tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap", "Storico", "Admin", "Musica", "Riepilogo", "Lavori"])
+tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap", "Storico", "Admin", "Musica", "Riepilogo", "Lavori", "Photopea"])
 
 with tabs[0]:
     st.header("Rilevamento foto duplicate")
@@ -579,8 +579,34 @@ with tabs[5]:
     with c11:
         edit_filter = st.selectbox("Filtro", ["nessuno", "grayscale", "sepia", "blur", "sharpen", "emboss", "edge", "contour"], key="edit_filter")
     with c12:
-        st.markdown(" ")
-        st.markdown(" ")
+        edit_mirror_h = st.checkbox("Specchio orizzontale", key="edit_mirror_h")
+        edit_mirror_v = st.checkbox("Specchio verticale", key="edit_mirror_v")
+
+    with st.expander("Regolazioni avanzate"):
+        st.markdown("Curve e bilanciamento colore")
+        edit_curve_shadow = st.slider("Ombre", 0, 128, 0, key="edit_curve_shadow")
+        edit_curve_highlight = st.slider("Luci", 128, 255, 255, key="edit_curve_highlight")
+        st.markdown("Bilanciamento colore (RGB)")
+        cb_shadow_r = st.slider("R ombre", -50, 50, 0, key="cb_sr")
+        cb_shadow_g = st.slider("G ombre", -50, 50, 0, key="cb_sg")
+        cb_shadow_b = st.slider("B ombre", -50, 50, 0, key="cb_sb")
+        cb_mid_r = st.slider("R mezzitoni", -50, 50, 0, key="cb_mr")
+        cb_mid_g = st.slider("G mezzitoni", -50, 50, 0, key="cb_mg")
+        cb_mid_b = st.slider("B mezzitoni", -50, 50, 0, key="cb_mb")
+        cb_high_r = st.slider("R luci", -50, 50, 0, key="cb_hr")
+        cb_high_g = st.slider("G luci", -50, 50, 0, key="cb_hg")
+        cb_high_b = st.slider("B luci", -50, 50, 0, key="cb_hb")
+        st.markdown("HSL")
+        edit_hue = st.slider("Tonalità", -180, 180, 0, key="edit_hue")
+        edit_hsl_sat = st.slider("Saturazione HSL", 0.0, 2.0, 1.0, 0.1, key="edit_hsl_sat")
+        edit_light = st.slider("Luminosità HSL", -0.5, 0.5, 0.0, 0.05, key="edit_light")
+        edit_vibrance = st.slider("Vibranza", -1.0, 1.0, 0.0, 0.1, key="edit_vibrance")
+        edit_vignette = st.slider("Vignettatura", 0.0, 1.0, 0.0, 0.05, key="edit_vignette")
+        edit_duotone = st.checkbox("Duotono", key="edit_duotone")
+        if edit_duotone:
+            edit_dt1 = st.color_picker("Colore ombre", "#1a1a1a", key="edit_dt1")
+            edit_dt2 = st.color_picker("Colore luci", "#f2c94c", key="edit_dt2")
+
     def _edit_kwargs():
         kwargs = {
             "rotate": edit_rotate,
@@ -588,6 +614,8 @@ with tabs[5]:
             "contrast": edit_contrast,
             "saturation": edit_saturation,
             "sharpen": edit_sharpen,
+            "mirror_h": edit_mirror_h,
+            "mirror_v": edit_mirror_v,
         }
         if edit_width:
             kwargs["width"] = edit_width
@@ -596,6 +624,21 @@ with tabs[5]:
         kwargs["keep_aspect"] = edit_keep_aspect
         if edit_filter != "nessuno":
             kwargs["filter"] = edit_filter
+        if edit_curve_shadow != 0 or edit_curve_highlight != 255:
+            kwargs["curves"] = [(0, edit_curve_shadow), (128, 128), (255, edit_curve_highlight)]
+        cbs = (cb_shadow_r, cb_shadow_g, cb_shadow_b)
+        cbm = (cb_mid_r, cb_mid_g, cb_mid_b)
+        cbh = (cb_high_r, cb_high_g, cb_high_b)
+        if any(v != 0 for v in cbs + cbm + cbh):
+            kwargs["color_balance"] = (cbs, cbm, cbh)
+        if edit_hue != 0 or edit_hsl_sat != 1.0 or edit_light != 0.0:
+            kwargs["hsl"] = (edit_hue, edit_hsl_sat, edit_light)
+        if edit_vibrance != 0:
+            kwargs["vibrance"] = edit_vibrance
+        if edit_vignette != 0:
+            kwargs["vignette"] = edit_vignette
+        if edit_duotone:
+            kwargs["duotone"] = (edit_dt1, edit_dt2)
         return kwargs
 
     c13, c14 = st.columns(2)
@@ -806,3 +849,9 @@ with tabs[11]:
                 st.download_button("Scarica", f, file_name=Path(v).name, key=f"dl_vid_{v}")
     if not edited_photos and not edited_videos:
         st.info("Nessun lavoro salvato. Modifica foto o video per vederli qui.")
+
+with tabs[12]:
+    st.header("Photopea")
+    st.markdown("Editor professionale integrato. Carica una foto, modificala, poi esportala e ricaricala nella Libreria.")
+    st.info("Per usare Photopea: File > Open (o trascina un'immagine) → modifica → File > Export As > PNG/JPG.")
+    st.components.v1.iframe("https://www.photopea.com", width=None, height=800, scrolling=True)
