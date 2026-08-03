@@ -36,11 +36,18 @@ def _create_first_user(username, password):
     return False
 
 
+def _seed_env_user():
+    user, pwd = _get_env_credentials()
+    if user and pwd and _use_db() and not db.user_exists(user):
+        db.create_user(user, pwd, is_admin=True)
+
+
 def login_form():
     db_ok = _use_db()
 
     if db_ok:
         db.init_db()
+        _seed_env_user()
 
     if db_ok and not db.has_users() and not _get_env_credentials()[0]:
         st.markdown("### 🔒 Crea il primo account admin")
