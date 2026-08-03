@@ -361,22 +361,125 @@ with tabs[0]:
     edited_photos = library.list_edited("photos")
     edited_videos = library.list_edited("videos")
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1:
+    # ── Metriche rapide ──
+    m1, m2, m3, m4, m5 = st.columns(5)
+    with m1:
         st.markdown('<div class="stat-card"><h3>📸</h3><h3>' + str(len(imgs)) + '</h3><p>Foto originali</p></div>', unsafe_allow_html=True)
-    with c2:
+    with m2:
         st.markdown('<div class="stat-card"><h3>🎥</h3><h3>' + str(len(vids)) + '</h3><p>Video originali</p></div>', unsafe_allow_html=True)
-    with c3:
+    with m3:
         st.markdown('<div class="stat-card"><h3>🎵</h3><h3>' + str(len(music_list)) + '</h3><p>Brani musicali</p></div>', unsafe_allow_html=True)
-    with c4:
+    with m4:
         st.markdown('<div class="stat-card"><h3>✏️</h3><h3>' + str(len(edited_photos)) + '</h3><p>Foto modificate</p></div>', unsafe_allow_html=True)
-    with c5:
+    with m5:
         st.markdown('<div class="stat-card"><h3>🎞️</h3><h3>' + str(len(edited_videos)) + '</h3><p>Video prodotti</p></div>', unsafe_allow_html=True)
 
     total_size = sum(f.stat().st_size for f in library.BASE.rglob("*") if f.is_file())
     st.metric("💾 Spazio occupato totale", f"{total_size / (1024 * 1024):.1f} MB")
 
     st.divider()
+
+    # ── 📸 FOTO ORIGINALI — Carica e sfoglia ──
+    st.markdown("### 📸 Foto Originali")
+    dash_photo_uploads = st.file_uploader(
+        "➕ Carica foto nella libreria",
+        accept_multiple_files=True,
+        type=["jpg", "jpeg", "png", "webp", "bmp", "tiff", "gif"],
+        key="dash_photo_upload",
+    )
+    if dash_photo_uploads:
+        saved = _save_uploads(dash_photo_uploads, "photos")
+        for p in saved:
+            db.log_upload(auth.current_user_id(), Path(p).name, p)
+        imgs, vids, music_list = _refresh_library()
+        st.success(f"✅ {len(saved)} foto caricate nella libreria!")
+
+    if imgs:
+        st.markdown(f"**{len(imgs)} foto in libreria** — clicca per selezionare")
+        for row_start in range(0, len(imgs), 5):
+            row_cols = st.columns(5)
+            for j, col in enumerate(row_cols):
+                idx = row_start + j
+                if idx < len(imgs):
+                    with col:
+                        try:
+                            st.image(imgs[idx], use_container_width=True)
+                        except Exception:
+                            pass
+                        st.caption(Path(imgs[idx]).name)
+                        if st.button("📸 Seleziona", key=f"dash_sel_img_{idx}"):
+                            st.session_state["dash_selected_photo"] = imgs[idx]
+                            st.rerun()
+        if st.session_state.get("dash_selected_photo"):
+            st.info(f"✅ Foto selezionata: **{Path(st.session_state['dash_selected_photo']).name}** — disponibile in Editor Foto e altri strumenti")
+    else:
+        st.info("Nessuna foto in libreria. Carica le tue foto qui sopra — resteranno disponibili sempre.")
+
+    st.divider()
+
+    # ── 🎥 VIDEO ORIGINALI — Carica e sfoglia ──
+    st.markdown("### 🎥 Video Originali")
+    dash_video_uploads = st.file_uploader(
+        "➕ Carica video nella libreria",
+        accept_multiple_files=True,
+        type=["mp4", "mov", "avi", "mkv", "flv", "wmv"],
+        key="dash_video_upload",
+    )
+    if dash_video_uploads:
+        saved = _save_uploads(dash_video_uploads, "videos")
+        for p in saved:
+            db.log_upload(auth.current_user_id(), Path(p).name, p)
+        imgs, vids, music_list = _refresh_library()
+        st.success(f"✅ {len(saved)} video caricati nella libreria!")
+
+    if vids:
+        st.markdown(f"**{len(vids)} video in libreria** — clicca per selezionare")
+        for row_start in range(0, len(vids), 3):
+            row_cols = st.columns(3)
+            for j, col in enumerate(row_cols):
+                idx = row_start + j
+                if idx < len(vids):
+                    with col:
+                        st.video(vids[idx])
+                        st.caption(Path(vids[idx]).name)
+                        if st.button("🎥 Seleziona", key=f"dash_sel_vid_{idx}"):
+                            st.session_state["dash_selected_video"] = vids[idx]
+                            st.rerun()
+        if st.session_state.get("dash_selected_video"):
+            st.info(f"✅ Video selezionato: **{Path(st.session_state['dash_selected_video']).name}** — disponibile in Editor Video e altri strumenti")
+    else:
+        st.info("Nessun video in libreria. Carica i tuoi video qui sopra — resteranno disponibili sempre.")
+
+    st.divider()
+
+    # ── 🎵 MUSICA — Carica e sfoglia ──
+    st.markdown("### 🎵 Brani Musicali")
+    dash_music_uploads = st.file_uploader(
+        "➕ Carica musica nella libreria",
+        accept_multiple_files=True,
+        type=["mp3", "wav", "aac", "flac", "ogg", "m4a"],
+        key="dash_music_upload",
+    )
+    if dash_music_uploads:
+        saved = _save_uploads(dash_music_uploads, "music")
+        for p in saved:
+            db.log_upload(auth.current_user_id(), Path(p).name, p)
+        imgs, vids, music_list = _refresh_library()
+        st.success(f"✅ {len(saved)} brani caricati nella libreria!")
+
+    if music_list:
+        for m in music_list:
+            mc1, mc2 = st.columns([3, 1])
+            with mc1:
+                st.audio(m)
+            with mc2:
+                st.caption(Path(m).name)
+    else:
+        st.info("Nessun brano in libreria. Carica la tua musica qui sopra.")
+
+    st.divider()
+
+    # ── 🛠️ Strumenti disponibili ──
     st.markdown("### 🛠️ Strumenti disponibili")
     col1, col2, col3 = st.columns(3)
     with col1:
