@@ -326,7 +326,7 @@ def _list_files(folder, exts):
     return sorted([str(f) for f in p.iterdir() if f.suffix.lower() in exts and f.is_file()])
 
 
-tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap", "Storico", "Admin", "Musica", "Riepilogo"])
+tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap", "Storico", "Admin", "Musica", "Riepilogo", "Lavori"])
 
 with tabs[0]:
     st.header("Rilevamento foto duplicate")
@@ -540,7 +540,7 @@ with tabs[5]:
         edit_default = ""
         if edit_input:
             p = Path(edit_input)
-            edit_default = str(library.EDITED_PHOTOS / f"{p.stem}_v1{p.suffix}")
+            edit_default = str(library.EXPORTS / f"{p.stem}_v1{p.suffix}")
         edit_output = st.text_input("Foto in uscita", value=edit_default, key="edit_output")
     placeholder = np.full((300, 400, 3), 40, dtype=np.uint8)
     if edit_input:
@@ -581,29 +581,50 @@ with tabs[5]:
     with c12:
         st.markdown(" ")
         st.markdown(" ")
-    if st.button("Applica modifiche", key="edit_run"):
+    def _edit_kwargs():
+        kwargs = {
+            "rotate": edit_rotate,
+            "brightness": edit_brightness,
+            "contrast": edit_contrast,
+            "saturation": edit_saturation,
+            "sharpen": edit_sharpen,
+        }
+        if edit_width:
+            kwargs["width"] = edit_width
+        if edit_height:
+            kwargs["height"] = edit_height
+        kwargs["keep_aspect"] = edit_keep_aspect
+        if edit_filter != "nessuno":
+            kwargs["filter"] = edit_filter
+        return kwargs
+
+    c13, c14 = st.columns(2)
+    with c13:
+        preview = st.button("👁️ Anteprima", key="edit_preview")
+    with c14:
+        save = st.button("💾 Salva modifiche", key="edit_save")
+
+    if preview:
+        if not edit_input:
+            st.error("Seleziona una foto")
+        else:
+            with st.spinner("Anteprima in corso..."):
+                try:
+                    preview_path = str(library.EDITED_PHOTOS / f"preview_{Path(edit_input).stem}.jpg")
+                    photo_editor.process_image(edit_input, preview_path, **_edit_kwargs())
+                    st.image(photo_editor.load_image(preview_path), caption="Anteprima modifiche", use_container_width=True)
+                except Exception as e:
+                    st.error(str(e))
+
+    if save:
         if not edit_input or not edit_output:
             st.error("Inserisci foto in ingresso e in uscita")
         else:
-            with st.spinner("Elaborazione in corso..."):
+            with st.spinner("Salvataggio in corso..."):
                 try:
-                    kwargs = {
-                        "rotate": edit_rotate,
-                        "brightness": edit_brightness,
-                        "contrast": edit_contrast,
-                        "saturation": edit_saturation,
-                        "sharpen": edit_sharpen,
-                    }
-                    if edit_width:
-                        kwargs["width"] = edit_width
-                    if edit_height:
-                        kwargs["height"] = edit_height
-                    kwargs["keep_aspect"] = edit_keep_aspect
-                    if edit_filter != "nessuno":
-                        kwargs["filter"] = edit_filter
                     out_path = library.next_version(edit_output)
-                    photo_editor.process_image(edit_input, out_path, **kwargs)
-                    st.image(photo_editor.load_image(out_path), caption="Anteprima risultato", use_container_width=True)
+                    photo_editor.process_image(edit_input, out_path, **_edit_kwargs())
+                    st.image(photo_editor.load_image(out_path), caption="Risultato salvato", use_container_width=True)
                     st.success(f"Foto salvata in: {out_path}")
                     _log("photo_edit", edit_input, out_path, "ok")
                     _refresh_library()
@@ -755,3 +776,33 @@ with tabs[10]:
             st.markdown("### Ultimi lavori")
             for j in jobs:
                 st.write(f"**{j[1]}** — {j[2][:60]} — _{j[4]}_")
+
+with tabs[11]:
+    st.header("Lavori salvati")
+    st.markdown("Qui trovi foto e video modificati, pronti per essere scaricati o rivisti.")
+    edited_photos = library.list_edited("photos")
+    edited_videos = library.list_edited("videos")
+    if edited_photos:
+        st.subheader("Foto modificate")
+        for i in range(0, len(edited_photos), 4):
+            cols = st.columns(4)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx < len(edited_photos):
+                    with col:
+                        try:
+                            st.image(edited_photos[idx], use_container_width=True)
+                        except Exception:
+                            st.write(Path(edited_photos[idx]).name)
+                        st.caption(Path(edited_photos[idx]).name)
+                        with open(edited_photos[idx], "rb") as f:
+                            st.download_button("Scarica", f, file_name=Path(edited_photos[idx]).name, key=f"dl_img_{idx}")
+    if edited_videos:
+        st.subheader("Video prodotti")
+        for v in edited_videos:
+            st.video(v)
+            st.caption(Path(v).name)
+            with open(v, "rb") as f:
+                st.download_button("Scarica", f, file_name=Path(v).name, key=f"dl_vid_{v}")
+    if not edited_photos and not edited_videos:
+        st.info("Nessun lavoro salvato. Modifica foto o video per vederli qui.")
