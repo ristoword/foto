@@ -5,3 +5,5 @@ numpy
 streamlit
 psycopg2-binary
 python-dotenv
+openai
+requests
