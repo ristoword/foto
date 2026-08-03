@@ -23,5 +23,15 @@ Streamlit reruns the whole script on every widget interaction, so waits between 
 ### System deps
 `ffmpeg` is required for slideshow/merge/video-editor features (already present in the environment). OpenCV is the `-headless` build, so no display libs are needed.
 
+### AI (OpenAI)
+L'app integra OpenAI GPT-4o tramite `ai_utils.py`. Le variabili necessarie in `.env` sono:
+```
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-4o
+OPENAI_MAX_TOKENS=1024
+OPENAI_TEMPERATURE=0.7
+```
+Senza `OPENAI_API_KEY` le funzioni AI restituiscono messaggi `⚠️ Errore AI: ...` ma non sollevano eccezioni. Le chiamate vision (analisi immagini) usano GPT-4o multimodale via base64 encoding.
+
 ### Lint / tests
 There is no lint config and no automated test suite in this repo. The only static check available is byte-compilation, e.g. `.venv/bin/python -m py_compile *.py`.

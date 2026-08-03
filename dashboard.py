@@ -13,6 +13,7 @@ import video_editor
 import auth
 import db
 import library
+import ai_utils as ai
 
 library.init_library()
 
@@ -248,6 +249,36 @@ with st.sidebar:
         for m in music:
             st.write(Path(m).name)
 
+    # ── AI Assistente ─────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("🤖 Assistente AI")
+    if "ai_chat_history" not in st.session_state:
+        st.session_state.ai_chat_history = []
+
+    chat_box = st.container(height=220)
+    with chat_box:
+        for _msg in st.session_state.ai_chat_history[-8:]:
+            _lbl = "👤 Tu" if _msg["role"] == "user" else "🤖 AI"
+            st.markdown(f"**{_lbl}:** {_msg['content']}")
+
+    _user_q = st.text_input(
+        "Chiedi...", key="ai_sidebar_input",
+        label_visibility="collapsed",
+        placeholder="Es: Come miglioro le foto scure?",
+    )
+    _sb_col1, _sb_col2 = st.columns([3, 1])
+    with _sb_col1:
+        if st.button("Invia", key="ai_sidebar_send") and _user_q:
+            st.session_state.ai_chat_history.append({"role": "user", "content": _user_q})
+            with st.spinner("AI..."):
+                _reply = ai.chat(st.session_state.ai_chat_history)
+            st.session_state.ai_chat_history.append({"role": "assistant", "content": _reply})
+            st.rerun()
+    with _sb_col2:
+        if st.button("🗑", key="ai_sidebar_clear", help="Cancella chat"):
+            st.session_state.ai_chat_history = []
+            st.rerun()
+
 
 def _image_picker(label, key, library_key):
     lib = st.session_state.get(library_key, [])
@@ -328,6 +359,9 @@ def _list_files(folder, exts):
 
 tabs = st.tabs(["Duplicati", "Migliora foto", "Slideshow", "Unione video", "Editor Video", "Editor Foto", "Face Swap", "Storico", "Admin", "Musica", "Riepilogo", "Lavori", "Photopea"])
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 0 — Duplicati
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[0]:
     st.header("Rilevamento foto duplicate")
     st.markdown("Trova foto duplicate o quasi identiche tramite hashing percettivo.")
@@ -344,6 +378,7 @@ with tabs[0]:
                     st.error(str(e))
                 else:
                     st.success(f"Trovati {report['duplicate_groups']} gruppi di duplicati su {report['total_images']} immagini")
+                    st.session_state["last_dup_report"] = report
                     _log("duplicates", dup_folder, "", "ok")
                     for i, group in enumerate(report['groups'], 1):
                         st.subheader(f"Gruppo {i} — migliore: {Path(group['best']).name}")
@@ -363,7 +398,48 @@ with tabs[0]:
                                     st.success("Copie duplicate eliminate. E rimasta solo quella con risoluzione maggiore per gruppo.")
                                     _log("duplicates_delete", dup_folder, "", "ok")
 
+    # ── AI: Analisi duplicati ─────────────────────────────────────────────
+    st.divider()
+    with st.expander("🤖 AI: Analisi duplicati e consigli"):
+        _n_lib = len(st.session_state.get("library_images", []))
+        if st.button("💡 Consigli AI sulla gestione duplicati", key="ai_dup_advice_btn"):
+            with st.spinner("AI analizza la tua libreria..."):
+                _result = ai.ask(
+                    f"Ho una libreria fotografica con {_n_lib} immagini. "
+                    "Dammi 4 consigli pratici per prevenire e gestire le foto duplicate in modo efficiente."
+                )
+                st.session_state["ai_dup_advice"] = _result
+        if "ai_dup_advice" in st.session_state:
+            st.info(st.session_state["ai_dup_advice"])
+
+        # Per-group AI analysis from the last search result
+        _last_report = st.session_state.get("last_dup_report")
+        if _last_report and _last_report.get("groups"):
+            st.markdown("**Analisi AI per ogni gruppo trovato:**")
+            for _gi, _grp in enumerate(_last_report["groups"], 1):
+                _gcol1, _gcol2 = st.columns([4, 1])
+                with _gcol1:
+                    st.markdown(f"Gruppo {_gi}: `{Path(_grp['best']).name}`")
+                with _gcol2:
+                    if st.button("Analizza", key=f"ai_dup_grp_btn_{_gi}"):
+                        with st.spinner(f"AI analizza gruppo {_gi}..."):
+                            _grp_rec = ai.analyze_duplicate_group(_grp)
+                            st.session_state[f"ai_dup_grp_{_gi}"] = _grp_rec
+                if st.session_state.get(f"ai_dup_grp_{_gi}"):
+                    st.caption(st.session_state[f"ai_dup_grp_{_gi}"])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 1 — Migliora foto
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[1]:
+    # Apply pending AI enhance params before widgets render
+    if st.session_state.pop("_apply_ai_enhance", False):
+        _ep = st.session_state.get("_ai_enhance_params", {})
+        if "gamma" in _ep:
+            st.session_state["enh_gamma"] = float(_ep["gamma"])
+        if "sharpness" in _ep:
+            st.session_state["enh_sharp"] = float(_ep["sharpness"])
+
     st.header("Migliora foto")
     st.markdown("Correggi esposizione, contrasto e nitidezza delle immagini.")
     c1, c2 = st.columns(2)
@@ -396,6 +472,42 @@ with tabs[1]:
                     st.success(f"Foto migliorate salvate in: {enh_out}")
                     _log("enhance", str(targets), enh_out, "ok")
 
+    # ── AI: Suggerisci parametri ──────────────────────────────────────────
+    st.divider()
+    with st.expander("🤖 AI: Suggerisci parametri di miglioramento"):
+        _enh_imgs = st.session_state.get("library_images", [])
+        _enh_candidates = enh_batch if enh_batch else _enh_imgs
+        if _enh_candidates:
+            _enh_pick = st.selectbox(
+                "Foto da analizzare con AI",
+                _enh_candidates,
+                format_func=lambda p: Path(p).name,
+                key="ai_enh_pick",
+            )
+            if st.button("🔍 Analizza con AI e suggerisci parametri", key="ai_enh_analyze_btn"):
+                if _enh_pick and Path(_enh_pick).is_file():
+                    with st.spinner("AI analizza la foto..."):
+                        _ep = ai.suggest_enhance_params(_enh_pick)
+                        st.session_state["_ai_enhance_params"] = _ep
+                else:
+                    st.warning("File non trovato.")
+
+            if "_ai_enhance_params" in st.session_state:
+                _ep = st.session_state["_ai_enhance_params"]
+                _ec1, _ec2 = st.columns(2)
+                _ec1.metric("Gamma consigliato", f"{_ep.get('gamma', 1.2):.2f}")
+                _ec2.metric("Nitidezza consigliata", f"{_ep.get('sharpness', 1.0):.2f}")
+                if _ep.get("reason"):
+                    st.info(f"💡 {_ep['reason']}")
+                if st.button("✅ Applica parametri AI", key="ai_enh_apply_btn"):
+                    st.session_state["_apply_ai_enhance"] = True
+                    st.rerun()
+        else:
+            st.info("Carica o seleziona almeno una foto per usare l'analisi AI.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 2 — Slideshow
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[2]:
     st.header("Crea slideshow da foto")
     st.markdown("Genera un video con transizioni a dissolvenza a partire dalle tue foto.")
@@ -436,6 +548,33 @@ with tabs[2]:
                     st.video(out_path)
                     _log("slideshow", sld_input, out_path, "ok")
 
+    # ── AI: Genera metadati slideshow ─────────────────────────────────────
+    st.divider()
+    with st.expander("🤖 AI: Genera titolo, descrizione e durata ottimale"):
+        if st.button("✨ Genera metadati AI per questo slideshow", key="ai_sld_meta_btn"):
+            _sld_imgs = st.session_state.get("library_images", [])
+            _sld_folder = Path(sld_input).name if sld_input else ""
+            _sld_names = [Path(p).name for p in _sld_imgs[:8]]
+            with st.spinner("AI genera metadati..."):
+                _sld_meta = ai.generate_slideshow_metadata(
+                    n_photos=len(_sld_imgs),
+                    folder_name=_sld_folder,
+                    photo_names=_sld_names,
+                )
+                st.session_state["ai_sld_meta"] = _sld_meta
+
+        if "ai_sld_meta" in st.session_state:
+            _m = st.session_state["ai_sld_meta"]
+            st.markdown(f"**🎬 Titolo:** {_m['title']}")
+            st.markdown(f"**📝 Descrizione:** {_m['description']}")
+            st.metric("⏱ Durata consigliata per foto (s)", _m['duration'])
+            if st.button("✅ Usa durata consigliata", key="ai_sld_apply_duration"):
+                st.session_state["sld_duration"] = float(_m["duration"])
+                st.rerun()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 3 — Unione video
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[3]:
     st.header("Unisci video")
     st.markdown("Concatena piu clip in un unico video normalizzando risoluzione e framerate.")
@@ -469,6 +608,21 @@ with tabs[3]:
                     st.video(out_path)
                     _log("merge", mrg_input, out_path, "ok")
 
+    # ── AI: Struttura narrativa ───────────────────────────────────────────
+    st.divider()
+    with st.expander("🤖 AI: Struttura narrativa e ordine clip"):
+        _mrg_vids = st.session_state.get("library_videos", [])
+        _mrg_names = [Path(v).name for v in _mrg_vids]
+        if st.button("🎬 Analizza struttura narrativa con AI", key="ai_mrg_order_btn"):
+            with st.spinner("AI analizza i clip..."):
+                _mrg_result = ai.suggest_merge_order(_mrg_names)
+                st.session_state["ai_mrg_order"] = _mrg_result
+        if "ai_mrg_order" in st.session_state:
+            st.info(st.session_state["ai_mrg_order"])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 4 — Editor Video
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[4]:
     st.header("Editor Video")
     st.markdown("Taglia clip, aggiungi musica, applica filtri artistici ed estrai frame.")
@@ -494,6 +648,15 @@ with tabs[4]:
                     _log("video_trim", vid_input, out_path, "ok")
                 except Exception as e:
                     st.error(str(e))
+        # AI suggestion for trim
+        with st.expander("🤖 AI: Consigli per il taglio"):
+            if st.button("💡 Strategie di taglio AI", key="ai_vid_trim_btn"):
+                _vname = Path(vid_input).name if vid_input else "video"
+                with st.spinner("AI analizza..."):
+                    st.session_state["ai_vid_trim"] = ai.suggest_trim_points(_vname)
+            if "ai_vid_trim" in st.session_state:
+                st.info(st.session_state["ai_vid_trim"])
+
     elif operation == "Aggiungi musica":
         audio_file = st.selectbox("File audio", [""] + library.list_music(), key="vid_audio")
         loop_audio = st.checkbox("Ripeti audio se piu corto del video", key="vid_loop")
@@ -507,6 +670,16 @@ with tabs[4]:
                     _log("video_music", vid_input, out_path, "ok")
                 except Exception as e:
                     st.error(str(e))
+        # AI suggestion for audio pairing
+        with st.expander("🤖 AI: Abbinamento musicale"):
+            if st.button("🎵 Suggerisci traccia AI", key="ai_vid_audio_btn"):
+                _vname = Path(vid_input).name if vid_input else "video"
+                _mnames = [Path(m).name for m in library.list_music()]
+                with st.spinner("AI analizza..."):
+                    st.session_state["ai_vid_audio"] = ai.suggest_audio_pairing(_vname, _mnames)
+            if "ai_vid_audio" in st.session_state:
+                st.info(st.session_state["ai_vid_audio"])
+
     elif operation == "Applica filtro":
         filter_name = st.selectbox("Filtro", ["grayscale", "blur", "negate", "edgedetect", "vignette", "sharpen"], key="vid_filter")
         if st.button("Applica filtro", key="vid_filter_btn"):
@@ -519,6 +692,15 @@ with tabs[4]:
                     _log("video_filter", vid_input, out_path, "ok")
                 except Exception as e:
                     st.error(str(e))
+        # AI filter suggestion
+        with st.expander("🤖 AI: Suggerisci filtro"):
+            if st.button("🎨 Quale filtro usare?", key="ai_vid_filter_btn"):
+                _vname = Path(vid_input).name if vid_input else "video"
+                with st.spinner("AI analizza..."):
+                    st.session_state["ai_vid_filter"] = ai.suggest_video_filter(_vname)
+            if "ai_vid_filter" in st.session_state:
+                st.info(st.session_state["ai_vid_filter"])
+
     elif operation == "Estrai frame":
         interval = st.number_input("Intervallo in secondi", value=1.0, min_value=0.1, step=0.1, key="vid_interval")
         if st.button("Estrai frame", key="vid_frames"):
@@ -529,8 +711,34 @@ with tabs[4]:
                     _log("video_frames", vid_input, vid_output, "ok")
                 except Exception as e:
                     st.error(str(e))
+        # AI interval suggestion
+        with st.expander("🤖 AI: Intervallo ottimale"):
+            if st.button("⏱ Suggerisci intervallo AI", key="ai_vid_interval_btn"):
+                _vname = Path(vid_input).name if vid_input else "video"
+                with st.spinner("AI analizza..."):
+                    st.session_state["ai_vid_interval"] = ai.suggest_frame_interval(_vname)
+            if "ai_vid_interval" in st.session_state:
+                st.info(st.session_state["ai_vid_interval"])
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 5 — Editor Foto
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[5]:
+    # Apply pending AI editor settings BEFORE any widget renders
+    if st.session_state.pop("_apply_ai_edit", False):
+        _ae = st.session_state.get("_ai_edit_settings", {})
+        _clamp = lambda v, lo, hi: max(lo, min(hi, v))
+        if "brightness" in _ae:
+            st.session_state["edit_brightness"] = _clamp(float(_ae["brightness"]), 0.0, 3.0)
+        if "contrast" in _ae:
+            st.session_state["edit_contrast"] = _clamp(float(_ae["contrast"]), 0.0, 3.0)
+        if "saturation" in _ae:
+            st.session_state["edit_saturation"] = _clamp(float(_ae["saturation"]), 0.0, 3.0)
+        if "sharpen" in _ae:
+            st.session_state["edit_sharpen"] = _clamp(float(_ae["sharpen"]), 0.0, 2.0)
+        if "filter" in _ae:
+            st.session_state["edit_filter"] = _ae["filter"]
+
     st.header("Editor Foto")
     st.markdown("Ritaglia, ruota, ridimensiona e applica correzioni alle foto.")
     c1, c2 = st.columns(2)
@@ -674,6 +882,35 @@ with tabs[5]:
                 except Exception as e:
                     st.error(str(e))
 
+    # ── AI: Suggerisci impostazioni editor ────────────────────────────────
+    st.divider()
+    with st.expander("🤖 AI: Analizza foto e suggerisci impostazioni ottimali"):
+        if edit_input and Path(edit_input).is_file():
+            if st.button("🔍 Analizza con AI", key="ai_edit_analyze_btn"):
+                with st.spinner("AI analizza la foto con visione artificiale..."):
+                    _ae_settings = ai.suggest_edit_settings(edit_input)
+                    st.session_state["_ai_edit_settings"] = _ae_settings
+
+            if "_ai_edit_settings" in st.session_state:
+                _ae = st.session_state["_ai_edit_settings"]
+                st.markdown("**Impostazioni consigliate dall'AI:**")
+                _ae_c1, _ae_c2, _ae_c3, _ae_c4 = st.columns(4)
+                _ae_c1.metric("Luminosità", f"{_ae.get('brightness', 1.0):.2f}")
+                _ae_c2.metric("Contrasto",  f"{_ae.get('contrast',   1.0):.2f}")
+                _ae_c3.metric("Saturazione",f"{_ae.get('saturation', 1.0):.2f}")
+                _ae_c4.metric("Nitidezza",  f"{_ae.get('sharpen',    0.0):.2f}")
+                st.write(f"**Filtro consigliato:** `{_ae.get('filter', 'nessuno')}`")
+                if _ae.get("reason"):
+                    st.info(f"💡 {_ae['reason']}")
+                if st.button("✅ Applica impostazioni AI agli slider", key="ai_edit_apply_btn"):
+                    st.session_state["_apply_ai_edit"] = True
+                    st.rerun()
+        else:
+            st.info("Seleziona o carica una foto nell'editor per analizzarla con AI.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 6 — Face Swap
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[6]:
     st.header("Face Swap")
     st.markdown("Scambia il volto sorgente con quello in una foto destinazione. Usa solo foto di tua proprietà e con consenso.")
@@ -703,6 +940,34 @@ with tabs[6]:
                 except Exception as e:
                     st.error(str(e))
 
+    # ── AI: Analisi qualità per face swap ─────────────────────────────────
+    st.divider()
+    with st.expander("🤖 AI: Analisi qualità foto per face swap"):
+        _fs_col1, _fs_col2 = st.columns(2)
+        with _fs_col1:
+            if face_src and Path(face_src).is_file():
+                if st.button("🔍 Analizza foto sorgente", key="ai_face_src_btn"):
+                    with st.spinner("AI analizza..."):
+                        st.session_state["ai_face_src"] = ai.check_face_swap_quality(face_src)
+                if "ai_face_src" in st.session_state:
+                    st.markdown("**Sorgente:**")
+                    st.info(st.session_state["ai_face_src"])
+            else:
+                st.caption("Carica la foto sorgente per l'analisi AI.")
+        with _fs_col2:
+            if face_dst and Path(face_dst).is_file():
+                if st.button("🔍 Analizza foto destinazione", key="ai_face_dst_btn"):
+                    with st.spinner("AI analizza..."):
+                        st.session_state["ai_face_dst"] = ai.check_face_swap_quality(face_dst)
+                if "ai_face_dst" in st.session_state:
+                    st.markdown("**Destinazione:**")
+                    st.info(st.session_state["ai_face_dst"])
+            else:
+                st.caption("Carica la foto destinazione per l'analisi AI.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 7 — Storico
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[7]:
     st.header("Storico")
     st.markdown("Storico dei lavori eseguiti.")
@@ -711,6 +976,7 @@ with tabs[7]:
         show_all = st.checkbox("Mostra tutti gli utenti", key="show_all_jobs")
         jobs = db.list_jobs() if show_all else db.list_jobs(user_id)
     else:
+        show_all = False
         jobs = db.list_jobs(user_id)
     if not jobs:
         st.info("Nessun lavoro trovato.")
@@ -737,6 +1003,19 @@ with tabs[7]:
                 data["data"].append(row[5])
         st.dataframe(data)
 
+    # ── AI: Riepilogo attività ─────────────────────────────────────────────
+    st.divider()
+    with st.expander("🤖 AI: Riepilogo intelligente attività"):
+        if st.button("📊 Genera riepilogo AI", key="ai_jobs_summary_btn"):
+            with st.spinner("AI analizza lo storico..."):
+                _is_adm = auth.current_user_is_admin() and show_all
+                st.session_state["ai_jobs_summary"] = ai.summarize_activity(jobs, is_admin=_is_adm)
+        if "ai_jobs_summary" in st.session_state:
+            st.info(st.session_state["ai_jobs_summary"])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 8 — Admin
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[8]:
     st.header("Gestione utenti")
     if not auth.current_user_is_admin():
@@ -781,6 +1060,22 @@ with tabs[8]:
                 else:
                     st.error("Errore nell'eliminazione.")
 
+        # ── AI: Report piattaforma ─────────────────────────────────────────
+        st.divider()
+        with st.expander("🤖 AI: Report piattaforma e analisi utenti"):
+            if st.button("📈 Genera report AI", key="ai_admin_report_btn"):
+                _all_jobs = db.list_jobs()
+                with st.spinner("AI genera il report..."):
+                    st.session_state["ai_admin_report"] = ai.analyze_admin_activity(
+                        users=users,
+                        total_jobs=len(_all_jobs),
+                    )
+            if "ai_admin_report" in st.session_state:
+                st.info(st.session_state["ai_admin_report"])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 9 — Musica
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[9]:
     st.header("Libreria musica")
     st.markdown("Carica e gestisci tracce audio da usare in slideshow e video.")
@@ -796,6 +1091,40 @@ with tabs[9]:
     else:
         st.info("Nessun brano caricato.")
 
+    # ── AI: Analisi tracce musicali ───────────────────────────────────────
+    st.divider()
+    with st.expander("🤖 AI: Mood e tag per le tracce musicali"):
+        if music:
+            _sel_track = st.selectbox(
+                "Seleziona traccia da analizzare",
+                music,
+                format_func=lambda p: Path(p).name,
+                key="ai_music_sel",
+            )
+            if st.button("🎵 Analizza mood con AI", key="ai_music_mood_btn"):
+                with st.spinner("AI analizza la traccia..."):
+                    _mname = Path(_sel_track).name if _sel_track else ""
+                    st.session_state["ai_music_mood"] = ai.suggest_music_mood(_mname)
+            if "ai_music_mood" in st.session_state:
+                st.info(st.session_state["ai_music_mood"])
+
+            if st.button("🎼 Analizza tutte le tracce", key="ai_music_all_btn"):
+                _all_moods = {}
+                for _tm in music:
+                    with st.spinner(f"Analisi: {Path(_tm).name}..."):
+                        _all_moods[Path(_tm).name] = ai.suggest_music_mood(Path(_tm).name)
+                st.session_state["ai_music_all_moods"] = _all_moods
+
+            if "ai_music_all_moods" in st.session_state:
+                st.markdown("**Analisi AI di tutte le tracce:**")
+                for _tn, _mood in st.session_state["ai_music_all_moods"].items():
+                    st.markdown(f"**{_tn}:** {_mood}")
+        else:
+            st.info("Carica almeno una traccia musicale per l'analisi AI.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 10 — Riepilogo
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[10]:
     st.header("Riepilogo")
     st.markdown("Dashboard di controllo della tua libreria e attività.")
@@ -820,6 +1149,26 @@ with tabs[10]:
             for j in jobs:
                 st.write(f"**{j[1]}** — {j[2][:60]} — _{j[4]}_")
 
+    # ── AI: Analisi libreria ──────────────────────────────────────────────
+    st.divider()
+    with st.expander("🤖 AI: Analisi e consigli sulla libreria"):
+        if st.button("📊 Analizza libreria con AI", key="ai_lib_report_btn"):
+            _size_mb = total_size / (1024 * 1024)
+            with st.spinner("AI analizza la tua libreria..."):
+                st.session_state["ai_lib_report"] = ai.analyze_library(
+                    n_photos=len(imgs),
+                    n_videos=len(vids),
+                    n_music=len(music),
+                    n_edited_photos=len(edited_photos),
+                    n_edited_videos=len(edited_videos),
+                    size_mb=_size_mb,
+                )
+        if "ai_lib_report" in st.session_state:
+            st.info(st.session_state["ai_lib_report"])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 11 — Lavori
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[11]:
     st.header("Lavori salvati")
     st.markdown("Qui trovi foto e video modificati, pronti per essere scaricati o rivisti.")
@@ -838,8 +1187,8 @@ with tabs[11]:
                         except Exception:
                             st.write(Path(edited_photos[idx]).name)
                         st.caption(Path(edited_photos[idx]).name)
-                        with open(edited_photos[idx], "rb") as f:
-                            st.download_button("Scarica", f, file_name=Path(edited_photos[idx]).name, key=f"dl_img_{idx}")
+                    with open(edited_photos[idx], "rb") as f:
+                        st.download_button("Scarica", f, file_name=Path(edited_photos[idx]).name, key=f"dl_img_{idx}")
     if edited_videos:
         st.subheader("Video prodotti")
         for v in edited_videos:
@@ -850,8 +1199,65 @@ with tabs[11]:
     if not edited_photos and not edited_videos:
         st.info("Nessun lavoro salvato. Modifica foto o video per vederli qui.")
 
+    # ── AI: Didascalie automatiche ────────────────────────────────────────
+    if edited_photos:
+        st.divider()
+        with st.expander("🤖 AI: Genera didascalie per le foto modificate"):
+            _cap_sel = st.selectbox(
+                "Seleziona foto",
+                edited_photos,
+                format_func=lambda p: Path(p).name,
+                key="ai_cap_sel",
+            )
+            if st.button("✍️ Genera didascalia AI", key="ai_cap_single_btn"):
+                if _cap_sel and Path(_cap_sel).is_file():
+                    with st.spinner("AI genera la didascalia..."):
+                        _cap_text = ai.caption_photo(_cap_sel)
+                        st.session_state[f"ai_cap_{Path(_cap_sel).stem}"] = _cap_text
+            _cap_key = f"ai_cap_{Path(_cap_sel).stem}" if _cap_sel else None
+            if _cap_key and _cap_key in st.session_state:
+                st.success(f"📸 {st.session_state[_cap_key]}")
+
+            if st.button("📸 Genera didascalie per tutte le foto", key="ai_cap_all_btn"):
+                _all_caps = {}
+                for _ep in edited_photos:
+                    with st.spinner(f"AI: {Path(_ep).name}..."):
+                        _all_caps[Path(_ep).name] = ai.caption_photo(_ep)
+                st.session_state["ai_all_captions"] = _all_caps
+
+            if "ai_all_captions" in st.session_state:
+                st.markdown("**Didascalie AI:**")
+                for _fn, _cap in st.session_state["ai_all_captions"].items():
+                    st.markdown(f"- **{_fn}:** {_cap}")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Tab 12 — Photopea
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[12]:
     st.header("Photopea")
     st.markdown("Editor professionale integrato. Carica una foto, modificala, poi esportala e ricaricala nella Libreria.")
     st.info("Per usare Photopea: File > Open (o trascina un'immagine) → modifica → File > Export As > PNG/JPG.")
+
+    # ── AI: Suggerisci passaggi di editing ────────────────────────────────
+    with st.expander("🤖 AI: Suggerisci passaggi di editing in Photopea", expanded=True):
+        _pp_imgs = st.session_state.get("library_images", []) + library.list_edited("photos")
+        if _pp_imgs:
+            _pp_sel = st.selectbox(
+                "Seleziona una foto da analizzare",
+                _pp_imgs,
+                format_func=lambda p: Path(p).name,
+                key="ai_pp_sel",
+            )
+            if st.button("🎨 Genera guida editing Photopea con AI", key="ai_pp_guide_btn"):
+                if _pp_sel and Path(_pp_sel).is_file():
+                    with st.spinner("AI analizza la foto e prepara la guida..."):
+                        _pp_guide = ai.suggest_photopea_edits(_pp_sel)
+                        st.session_state["ai_pp_guide"] = _pp_guide
+                else:
+                    st.warning("File non trovato.")
+            if "ai_pp_guide" in st.session_state:
+                st.info(st.session_state["ai_pp_guide"])
+        else:
+            st.info("Carica almeno una foto nella libreria per ricevere suggerimenti AI personalizzati.")
+
     st.components.v1.iframe("https://www.photopea.com", width=None, height=800, scrolling=True)
