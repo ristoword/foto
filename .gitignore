@@ -14,13 +14,23 @@ ENV/
 *.bak
 launch.log
 
-# Output e media generati
+# Output e media generati (cartelle temporanee esterne)
 output/
 outputs/
-*.mp4
-*.avi
-*.mov
-*.mkv
+
+# Media files nella libreria persistente — escludi file pesanti ma tieni cartelle con .gitkeep
+library/originals/**/*.mp4
+library/originals/**/*.avi
+library/originals/**/*.mov
+library/originals/**/*.mkv
+library/edited/**/*.mp4
+library/edited/**/*.avi
+library/edited/**/*.mov
+library/edited/**/*.mkv
+library/exports/**/*.mp4
+library/exports/**/*.avi
+library/exports/**/*.mov
+library/exports/**/*.mkv
 
 # Env
 .env

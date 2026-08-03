@@ -20,6 +20,11 @@ MUSIC_EXTS = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a'}
 def init_library():
     for d in [ORIGINAL_PHOTOS, ORIGINAL_VIDEOS, EDITED_PHOTOS, EDITED_VIDEOS, MUSIC, EXPORTS]:
         d.mkdir(parents=True, exist_ok=True)
+    # Ensure a .gitkeep in each folder so they persist in git
+    for d in [ORIGINAL_PHOTOS, ORIGINAL_VIDEOS, EDITED_PHOTOS, EDITED_VIDEOS, MUSIC, EXPORTS]:
+        gk = d / ".gitkeep"
+        if not gk.exists():
+            gk.touch()
 
 
 def list_originals(kind="photos"):

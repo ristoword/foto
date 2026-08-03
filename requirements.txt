@@ -1,7 +1,7 @@
-pillow
+pillow>=10.0.0
 imagehash
 opencv-python-headless
 numpy
-streamlit
+streamlit>=1.35.0
 psycopg2-binary
 python-dotenv
