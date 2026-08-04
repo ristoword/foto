@@ -394,6 +394,10 @@ with tabs[0]:
         imgs, vids, music_list = _refresh_library()
         st.success(f"✅ {len(saved)} foto caricate nella libreria!")
 
+    # Risolvi solo file realmente presenti su disco
+    imgs = library.resolve_media_paths(imgs, "photos")
+    st.session_state.library_images = imgs
+
     if imgs:
         st.markdown(f"**{len(imgs)} foto in libreria** — clicca per selezionare")
         for row_start in range(0, len(imgs), 5):
@@ -405,7 +409,7 @@ with tabs[0]:
                         try:
                             st.image(imgs[idx], use_container_width=True)
                         except Exception:
-                            pass
+                            st.caption(f"⚠️ Non apribile: {Path(imgs[idx]).name}")
                         st.caption(Path(imgs[idx]).name)
                         if st.button("📸 Seleziona", key=f"dash_sel_img_{idx}"):
                             st.session_state["dash_selected_photo"] = imgs[idx]
@@ -1297,49 +1301,104 @@ with tabs[2]:
 # ═══════════════════════════════════════════════════════════════════════════
 with tabs[3]:
     st.markdown("## 🎥 Crea Slideshow da Foto")
-    st.markdown("Genera un video con transizioni a dissolvenza dalle tue foto.")
+    st.markdown("Seleziona **più foto** dalla libreria (o caricane di nuove) e crea un video con transizioni.")
+
+    sld_uploads = st.file_uploader(
+        "➕ Carica foto per lo slideshow (restano in libreria)",
+        accept_multiple_files=True,
+        type=["jpg", "jpeg", "png", "webp", "bmp", "tiff"],
+        key="sld_uploader",
+    )
+    if sld_uploads:
+        saved = _save_uploads(sld_uploads, "photos")
+        for p in saved:
+            db.log_upload(auth.current_user_id(), Path(p).name, p)
+        _refresh_library()
+        st.success(f"✅ {len(saved)} foto caricate")
+
+    lib_imgs = st.session_state.get("library_images", []) or library.list_originals("photos")
+    # Mappa nome -> percorso (risolve anche path obsoleti)
+    name_to_path = {}
+    for p in lib_imgs:
+        resolved = library.resolve_media_path(p, "photos")
+        if resolved:
+            name_to_path[Path(resolved).name] = resolved
+
+    if not name_to_path:
+        st.warning("Nessuna foto nella libreria. Carica le foto qui sopra o dalla Dashboard.")
+        sld_selected_names = []
+    else:
+        sld_selected_names = st.multiselect(
+            f"📸 Seleziona foto dalla libreria ({len(name_to_path)} disponibili)",
+            options=list(name_to_path.keys()),
+            default=[],
+            key="sld_multiselect",
+            help="Puoi selezionare più foto. L'ordine di selezione è l'ordine nello slideshow.",
+        )
+        if sld_selected_names:
+            preview_cols = st.columns(min(5, len(sld_selected_names)))
+            for i, name in enumerate(sld_selected_names[:10]):
+                with preview_cols[i % len(preview_cols)]:
+                    try:
+                        st.image(name_to_path[name], use_container_width=True, caption=name)
+                    except Exception:
+                        st.caption(f"⚠️ {name}")
+
     c1, c2 = st.columns(2)
     with c1:
-        sld_input = _folder_or_uploads(
-            "foto", "sld_input",
-            accept=["jpg", "jpeg", "png", "webp", "bmp", "tiff"],
-            kind="photos", library_key="library_images",
+        sld_output = st.text_input(
+            "File video di output",
+            value=str(library.EDITED_VIDEOS / "slideshow_v1.mp4"),
+            key="sld_output",
         )
     with c2:
-        sld_output = st.text_input("File video di output", value=str(library.EDITED_VIDEOS / "slideshow_v1.mp4"), key="sld_output")
+        sld_music = st.selectbox(
+            "Musica di sottofondo",
+            [""] + library.list_music(),
+            format_func=lambda x: Path(x).name if x else "(nessuna)",
+            key="sld_music",
+        )
     c3, c4, c5 = st.columns(3)
     with c3:
-        sld_duration = st.number_input("Durata immagine (s)", value=3.0, min_value=0.1, step=0.5, key="sld_duration")
+        sld_duration = st.number_input("Durata immagine (s)", value=3.0, min_value=0.5, step=0.5, key="sld_duration")
     with c4:
         sld_transition = st.number_input("Transizione (s)", value=0.5, min_value=0.0, step=0.1, key="sld_transition")
     with c5:
         sld_fps = st.number_input("FPS", value=30, min_value=1, step=1, key="sld_fps")
-    c6, c7 = st.columns(2)
-    with c6:
-        sld_resolution = st.selectbox("Risoluzione", ["1920x1080", "1280x720", "3840x2160"], key="sld_resolution")
-    with c7:
-        sld_music = st.selectbox("Musica di sottofondo", [""] + library.list_music(), key="sld_music")
+    sld_resolution = st.selectbox("Risoluzione", ["1920x1080", "1280x720", "3840x2160"], key="sld_resolution")
+
     if st.button("🎥 Crea slideshow", key="sld_run"):
-        p = Path(sld_input.strip()) if sld_input else Path("")
-        if p.is_dir():
-            paths = _list_files(sld_input, IMAGE_EXTS)
+        paths = [name_to_path[n] for n in sld_selected_names if n in name_to_path]
+        paths = library.resolve_media_paths(paths, "photos")
+        if len(paths) < 1:
+            st.error("Seleziona almeno una foto dalla libreria (o caricane prima).")
         else:
-            paths = [x.strip() for x in sld_input.split(",") if x.strip()] if sld_input else []
-        if not paths:
-            st.error("Nessuna immagine trovata")
-        else:
-            with st.spinner("Creazione video in corso..."):
+            # Verifica apertura foto prima di avviare ffmpeg
+            bad = []
+            for p in paths:
                 try:
-                    out_path = library.next_version(sld_output)
-                    video_slideshow.make_slideshow(
-                        paths, out_path, sld_duration, sld_transition,
-                        sld_resolution, sld_fps, sld_music or None,
-                    )
-                    st.success(f"Slideshow salvato: {out_path}")
-                    st.video(out_path)
-                    _log("slideshow", sld_input, out_path, "ok")
+                    from PIL import Image as _PILImage
+                    with _PILImage.open(p) as im:
+                        im.load()
                 except Exception as e:
-                    st.error(str(e))
+                    bad.append(f"{Path(p).name}: {e}")
+            if bad:
+                st.error("Impossibile aprire queste foto:\n- " + "\n- ".join(bad))
+            else:
+                with st.spinner(f"Creazione slideshow con {len(paths)} foto..."):
+                    try:
+                        out_path = library.next_version(sld_output)
+                        music_path = library.resolve_media_path(sld_music, "music") if sld_music else None
+                        video_slideshow.make_slideshow(
+                            paths, out_path, sld_duration, sld_transition,
+                            sld_resolution, int(sld_fps), music_path,
+                        )
+                        st.success(f"Slideshow salvato: {out_path}")
+                        st.video(out_path)
+                        _log("slideshow", f"{len(paths)} foto", out_path, "ok")
+                        _refresh_library()
+                    except Exception as e:
+                        st.error(f"Errore slideshow: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

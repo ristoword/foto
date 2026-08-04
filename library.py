@@ -78,3 +78,35 @@ def next_version(path):
         if not candidate.exists():
             return str(candidate.resolve())
         i += 1
+
+
+def resolve_media_path(path_or_name, kind="photos"):
+    """Risolve un percorso o nome file nella libreria, anche se il path assoluto e' obsoleto."""
+    if not path_or_name:
+        return None
+    p = Path(str(path_or_name))
+    if p.is_file():
+        return str(p.resolve())
+    # prova per nome file nella cartella corretta
+    name = p.name
+    candidates = []
+    if kind == "photos":
+        candidates = [ORIGINAL_PHOTOS / name, EDITED_PHOTOS / name, EXPORTS / name]
+    elif kind == "videos":
+        candidates = [ORIGINAL_VIDEOS / name, EDITED_VIDEOS / name]
+    elif kind == "music":
+        candidates = [MUSIC / name]
+    for c in candidates:
+        if c.is_file():
+            return str(c.resolve())
+    return None
+
+
+def resolve_media_paths(paths, kind="photos"):
+    """Risolve una lista di percorsi; ignora quelli non trovati."""
+    out = []
+    for raw in paths or []:
+        resolved = resolve_media_path(raw, kind=kind)
+        if resolved:
+            out.append(resolved)
+    return out
