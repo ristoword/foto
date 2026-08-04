@@ -1297,14 +1297,44 @@ with tabs[2]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 🎥 TAB 3 — SLIDESHOW
+# 🎥 TAB 3 — SLIDESHOW (iMovie / Canva / CapCut / Adobe Express)
 # ═══════════════════════════════════════════════════════════════════════════
 with tabs[3]:
-    st.markdown("## 🎥 Crea Slideshow da Foto")
-    st.markdown("Seleziona **più foto** dalla libreria (o caricane di nuove) e crea un video con transizioni.")
+    st.markdown("## 🎥 Slideshow Studio")
+    st.markdown(
+        "Crea video da foto con stile **iMovie**, **Canva**, **CapCut** e **Adobe Express** — "
+        "musica, titoli, transizioni, filtri e formati social."
+    )
+    st.markdown(
+        '<span class="tool-badge">iMovie</span> '
+        '<span class="tool-badge">Canva</span> '
+        '<span class="tool-badge">CapCut</span> '
+        '<span class="tool-badge">Adobe Express</span>',
+        unsafe_allow_html=True,
+    )
 
+    # ── Template stile programmi ──
+    st.markdown("### 🎬 Scegli lo stile (template)")
+    template_names = list(video_slideshow.TEMPLATES.keys())
+    sld_template = st.selectbox(
+        "Template professionale",
+        ["Personalizzato"] + template_names,
+        key="sld_template",
+        help="Applica automaticamente durata, transizioni, filtri e formato come nei programmi originali.",
+    )
+    tmpl = video_slideshow.apply_template(sld_template) if sld_template != "Personalizzato" else None
+    if tmpl:
+        st.info(
+            f"**{sld_template}** → durata {tmpl['duration']}s · "
+            f"transizione `{tmpl['transition']}` · filtro `{tmpl['filter']}` · "
+            f"formato {tmpl['aspect']}"
+            + (" · Ken Burns ON" if tmpl.get("ken_burns") else "")
+        )
+
+    # ── Foto ──
+    st.markdown("### 📸 Foto")
     sld_uploads = st.file_uploader(
-        "➕ Carica foto per lo slideshow (restano in libreria)",
+        "➕ Carica foto (restano in libreria)",
         accept_multiple_files=True,
         type=["jpg", "jpeg", "png", "webp", "bmp", "tiff"],
         key="sld_uploader",
@@ -1317,7 +1347,6 @@ with tabs[3]:
         st.success(f"✅ {len(saved)} foto caricate")
 
     lib_imgs = st.session_state.get("library_images", []) or library.list_originals("photos")
-    # Mappa nome -> percorso (risolve anche path obsoleti)
     name_to_path = {}
     for p in lib_imgs:
         resolved = library.resolve_media_path(p, "photos")
@@ -1325,15 +1354,13 @@ with tabs[3]:
             name_to_path[Path(resolved).name] = resolved
 
     if not name_to_path:
-        st.warning("Nessuna foto nella libreria. Carica le foto qui sopra o dalla Dashboard.")
+        st.warning("Nessuna foto in libreria. Caricale qui sopra.")
         sld_selected_names = []
     else:
         sld_selected_names = st.multiselect(
-            f"📸 Seleziona foto dalla libreria ({len(name_to_path)} disponibili)",
+            f"Seleziona foto ({len(name_to_path)} disponibili) — ordine = ordine video",
             options=list(name_to_path.keys()),
-            default=[],
             key="sld_multiselect",
-            help="Puoi selezionare più foto. L'ordine di selezione è l'ordine nello slideshow.",
         )
         if sld_selected_names:
             preview_cols = st.columns(min(5, len(sld_selected_names)))
@@ -1344,36 +1371,111 @@ with tabs[3]:
                     except Exception:
                         st.caption(f"⚠️ {name}")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        sld_output = st.text_input(
-            "File video di output",
-            value=str(library.EDITED_VIDEOS / "slideshow_v1.mp4"),
-            key="sld_output",
-        )
-    with c2:
+    # ── Musica (Canva / CapCut / iMovie / Adobe Express) ──
+    st.markdown("### 🎵 Musica di sottofondo")
+    st.caption("Come in iMovie, CapCut, Canva e Adobe Express: aggiungi una colonna sonora al video.")
+    sld_music_up = st.file_uploader(
+        "➕ Carica brano (mp3, wav, aac, m4a…)",
+        type=["mp3", "wav", "aac", "flac", "ogg", "m4a"],
+        key="sld_music_uploader",
+    )
+    if sld_music_up:
+        mp = _save_upload(sld_music_up, "music")
+        db.log_upload(auth.current_user_id(), Path(mp).name, mp)
+        _refresh_library()
+        st.success(f"✅ Musica caricata: {Path(mp).name}")
+        st.session_state["sld_last_music"] = mp
+
+    music_opts = library.list_music()
+    default_music_idx = 0
+    if st.session_state.get("sld_last_music") in music_opts:
+        default_music_idx = music_opts.index(st.session_state["sld_last_music"]) + 1
+
+    mc1, mc2, mc3 = st.columns(3)
+    with mc1:
         sld_music = st.selectbox(
-            "Musica di sottofondo",
-            [""] + library.list_music(),
-            format_func=lambda x: Path(x).name if x else "(nessuna)",
+            "Brano dalla libreria",
+            [""] + music_opts,
+            index=min(default_music_idx, len(music_opts)),
+            format_func=lambda x: Path(x).name if x else "(nessuna musica)",
             key="sld_music",
         )
-    c3, c4, c5 = st.columns(3)
-    with c3:
-        sld_duration = st.number_input("Durata immagine (s)", value=3.0, min_value=0.5, step=0.5, key="sld_duration")
-    with c4:
-        sld_transition = st.number_input("Transizione (s)", value=0.5, min_value=0.0, step=0.1, key="sld_transition")
-    with c5:
-        sld_fps = st.number_input("FPS", value=30, min_value=1, step=1, key="sld_fps")
-    sld_resolution = st.selectbox("Risoluzione", ["1920x1080", "1280x720", "3840x2160"], key="sld_resolution")
+    with mc2:
+        default_vol = tmpl["music_volume"] if tmpl else 0.8
+        sld_music_vol = st.slider("Volume musica", 0.0, 1.5, float(default_vol), 0.05, key="sld_music_vol")
+    with mc3:
+        default_fade = tmpl["fade_audio"] if tmpl else 1.0
+        sld_fade_audio = st.slider("Fade audio (s)", 0.0, 3.0, float(default_fade), 0.1, key="sld_fade_audio")
+    if sld_music:
+        st.audio(sld_music)
 
-    if st.button("🎥 Crea slideshow", key="sld_run"):
+    # ── Titoli (Canva / Adobe Express / iMovie) ──
+    st.markdown("### ✍️ Titoli e testo")
+    tc1, tc2, tc3 = st.columns(3)
+    with tc1:
+        sld_title = st.text_input("Titolo principale", placeholder="Es: La nostra estate", key="sld_title")
+    with tc2:
+        sld_subtitle = st.text_input("Sottotitolo", placeholder="Es: Agosto 2026", key="sld_subtitle")
+    with tc3:
+        sld_title_pos = st.selectbox("Posizione titolo", ["center", "top", "bottom"], key="sld_title_pos")
+
+    # ── Transizioni, filtri, formato ──
+    st.markdown("### ✨ Transizioni, filtri e formato")
+    default_trans = tmpl["transition"] if tmpl else "dissolvenza"
+    default_filter = tmpl["filter"] if tmpl else "nessuno"
+    default_dur = tmpl["duration"] if tmpl else 3.0
+    default_tdur = tmpl["transition_dur"] if tmpl else 0.5
+    default_kb = tmpl["ken_burns"] if tmpl else False
+    default_aspect = tmpl["aspect"] if tmpl else "16:9"
+
+    ec1, ec2, ec3, ec4 = st.columns(4)
+    with ec1:
+        trans_opts = list(video_slideshow.TRANSITIONS.keys())
+        trans_idx = trans_opts.index(default_trans) if default_trans in trans_opts else 0
+        sld_trans_type = st.selectbox("Transizione", trans_opts, index=trans_idx, key="sld_trans_type")
+    with ec2:
+        filter_opts = list(video_slideshow.FILTERS.keys())
+        filt_idx = filter_opts.index(default_filter) if default_filter in filter_opts else 0
+        sld_filter = st.selectbox("Filtro / Look", filter_opts, index=filt_idx, key="sld_filter")
+    with ec3:
+        aspect_opts = list(video_slideshow.ASPECT_RESOLUTIONS.keys())
+        asp_idx = aspect_opts.index(default_aspect) if default_aspect in aspect_opts else 0
+        sld_aspect = st.selectbox("Formato", aspect_opts, index=asp_idx, key="sld_aspect",
+                                 help="16:9 YouTube · 9:16 Reels/TikTok · 1:1 Instagram · 4:5 Feed")
+    with ec4:
+        sld_ken_burns = st.checkbox("Ken Burns (zoom iMovie)", value=default_kb, key="sld_ken_burns")
+
+    res_map = video_slideshow.ASPECT_RESOLUTIONS.get(sld_aspect, video_slideshow.ASPECT_RESOLUTIONS["16:9"])
+    res_labels = list(res_map.keys())
+    pc1, pc2, pc3, pc4 = st.columns(4)
+    with pc1:
+        sld_duration = st.number_input("Durata foto (s)", value=float(default_dur), min_value=0.5, step=0.5, key="sld_duration")
+    with pc2:
+        sld_transition = st.number_input("Durata transizione (s)", value=float(default_tdur), min_value=0.0, step=0.1, key="sld_transition")
+    with pc3:
+        sld_resolution = st.selectbox("Risoluzione", res_labels, key="sld_resolution")
+    with pc4:
+        sld_fps = st.number_input("FPS", value=30, min_value=15, max_value=60, step=1, key="sld_fps")
+
+    sld_fit = st.radio(
+        "Adattamento foto",
+        ["contain", "cover"],
+        horizontal=True,
+        format_func=lambda x: "Contieni (barre nere)" if x == "contain" else "Riempi (ritaglio)",
+        key="sld_fit",
+    )
+    sld_output = st.text_input(
+        "File video di output",
+        value=str(library.EDITED_VIDEOS / "slideshow_v1.mp4"),
+        key="sld_output",
+    )
+
+    if st.button("🎬 Crea slideshow professionale", key="sld_run", use_container_width=True):
         paths = [name_to_path[n] for n in sld_selected_names if n in name_to_path]
         paths = library.resolve_media_paths(paths, "photos")
         if len(paths) < 1:
             st.error("Seleziona almeno una foto dalla libreria (o caricane prima).")
         else:
-            # Verifica apertura foto prima di avviare ffmpeg
             bad = []
             for p in paths:
                 try:
@@ -1385,17 +1487,38 @@ with tabs[3]:
             if bad:
                 st.error("Impossibile aprire queste foto:\n- " + "\n- ".join(bad))
             else:
-                with st.spinner(f"Creazione slideshow con {len(paths)} foto..."):
+                music_path = library.resolve_media_path(sld_music, "music") if sld_music else None
+                style_label = sld_template if sld_template != "Personalizzato" else "Personalizzato"
+                with st.spinner(
+                    f"Creazione stile {style_label} con {len(paths)} foto"
+                    + (" + musica" if music_path else "")
+                    + "..."
+                ):
                     try:
                         out_path = library.next_version(sld_output)
-                        music_path = library.resolve_media_path(sld_music, "music") if sld_music else None
                         video_slideshow.make_slideshow(
-                            paths, out_path, sld_duration, sld_transition,
-                            sld_resolution, int(sld_fps), music_path,
+                            paths,
+                            out_path,
+                            duration=sld_duration,
+                            transition=sld_transition,
+                            resolution=sld_resolution,
+                            fps=int(sld_fps),
+                            music=music_path,
+                            transition_type=sld_trans_type,
+                            filter_name=sld_filter,
+                            ken_burns=sld_ken_burns,
+                            title=sld_title or None,
+                            subtitle=sld_subtitle or None,
+                            title_position=sld_title_pos,
+                            music_volume=sld_music_vol,
+                            fade_audio=sld_fade_audio,
+                            fit=sld_fit,
                         )
-                        st.success(f"Slideshow salvato: {out_path}")
+                        st.success(f"✅ Slideshow creato ({style_label}): {out_path}")
+                        if music_path:
+                            st.caption(f"🎵 Musica: {Path(music_path).name} · volume {sld_music_vol}")
                         st.video(out_path)
-                        _log("slideshow", f"{len(paths)} foto", out_path, "ok")
+                        _log("slideshow", f"{style_label} · {len(paths)} foto", out_path, "ok")
                         _refresh_library()
                     except Exception as e:
                         st.error(f"Errore slideshow: {e}")
