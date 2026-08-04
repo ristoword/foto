@@ -28,16 +28,8 @@ def _log(job_type, input_summary, output_path, status="ok"):
 st.set_page_config(page_title="AppFoto Studio Pro", layout="wide", page_icon="🎬")
 auth.require_login()
 
-# Installa pacchetti musica iMovie/Canva/CapCut al primo avvio (se mancanti)
-if "music_packs_checked" not in st.session_state:
-    try:
-        if not music_packs.all_packs_ready():
-            with st.spinner("📥 Download musica preinstallata (iMovie / Canva / CapCut)…"):
-                music_packs.ensure_music_packs()
-        st.session_state.music_packs_checked = True
-    except Exception as e:
-        st.session_state.music_packs_checked = True
-        st.session_state.music_packs_error = str(e)
+# I pacchetti musica si installano on-demand (tab Musica / Slideshow), non al login
+st.session_state.setdefault("music_packs_checked", True)
 # ── CSS PROFESSIONALE ────────────────────────────────────────────────────────
 st.markdown("""
 <style>

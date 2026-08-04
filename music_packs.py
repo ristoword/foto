@@ -141,7 +141,7 @@ def all_packs_ready() -> bool:
     return all(is_pack_ready(p) for p in PACKS)
 
 
-def _download(url: str, dest: Path, timeout: int = 120) -> None:
+def _download(url: str, dest: Path, timeout: int = 45) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     req = urllib.request.Request(

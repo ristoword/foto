@@ -18,7 +18,6 @@ COPY . .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pacchetti musica preinstallati stile iMovie / Canva / CapCut (royalty-free)
-RUN python music_packs.py || true
+# La musica iMovie/Canva/CapCut si scarica a runtime (non in build: bloccava Railway)
 
 CMD exec streamlit run dashboard.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
