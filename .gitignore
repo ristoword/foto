@@ -22,6 +22,14 @@ outputs/
 *.mov
 *.mkv
 
+# Musica scaricata (si installa a runtime / Docker build)
+library/music/**/*.mp3
+library/music/**/*.wav
+library/music/**/*.part
+library/originals/
+library/edited/
+library/exports/
+
 # Env
 .env
 .env.local

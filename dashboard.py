@@ -14,6 +14,7 @@ import auth
 import db
 import library
 import ai_tools
+import music_packs
 
 library.init_library()
 
@@ -27,6 +28,16 @@ def _log(job_type, input_summary, output_path, status="ok"):
 st.set_page_config(page_title="AppFoto Studio Pro", layout="wide", page_icon="🎬")
 auth.require_login()
 
+# Installa pacchetti musica iMovie/Canva/CapCut al primo avvio (se mancanti)
+if "music_packs_checked" not in st.session_state:
+    try:
+        if not music_packs.all_packs_ready():
+            with st.spinner("📥 Download musica preinstallata (iMovie / Canva / CapCut)…"):
+                music_packs.ensure_music_packs()
+        st.session_state.music_packs_checked = True
+    except Exception as e:
+        st.session_state.music_packs_checked = True
+        st.session_state.music_packs_error = str(e)
 # ── CSS PROFESSIONALE ────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -1371,11 +1382,29 @@ with tabs[3]:
                     except Exception:
                         st.caption(f"⚠️ {name}")
 
-    # ── Musica (Canva / CapCut / iMovie / Adobe Express) ──
+    # ── Musica preinstallata iMovie / Canva / CapCut ──
     st.markdown("### 🎵 Musica di sottofondo")
-    st.caption("Come in iMovie, CapCut, Canva e Adobe Express: aggiungi una colonna sonora al video.")
+    st.caption(
+        "Pacchetti preinstallati stile **iMovie**, **Canva** e **CapCut** "
+        "(musica royalty-free, pronta all'uso). Puoi anche caricare i tuoi brani."
+    )
+
+    if not music_packs.all_packs_ready():
+        if st.button("📥 Scarica pacchetti musica iMovie / Canva / CapCut", key="sld_dl_packs"):
+            with st.spinner("Download in corso…"):
+                stats = music_packs.ensure_music_packs()
+            st.success(f"Scaricate: {stats['downloaded']} · già presenti: {stats['skipped']} · errori: {stats['failed']}")
+            st.rerun()
+
+    pack_filter = st.radio(
+        "Pacchetto",
+        ["Tutti", "🎬 iMovie", "🎨 Canva", "✂️ CapCut", "📁 Le tue"],
+        horizontal=True,
+        key="sld_pack_filter",
+    )
+
     sld_music_up = st.file_uploader(
-        "➕ Carica brano (mp3, wav, aac, m4a…)",
+        "➕ Oppure carica un tuo brano (mp3, wav, aac, m4a…)",
         type=["mp3", "wav", "aac", "flac", "ogg", "m4a"],
         key="sld_music_uploader",
     )
@@ -1386,18 +1415,46 @@ with tabs[3]:
         st.success(f"✅ Musica caricata: {Path(mp).name}")
         st.session_state["sld_last_music"] = mp
 
-    music_opts = library.list_music()
+    grouped = music_packs.list_music_grouped()
+    flat_opts = [("", "(nessuna musica)")]
+    for label, tracks in grouped.items():
+        if pack_filter == "🎬 iMovie" and not label.startswith("🎬"):
+            continue
+        if pack_filter == "🎨 Canva" and not label.startswith("🎨"):
+            continue
+        if pack_filter == "✂️ CapCut" and not label.startswith("✂️"):
+            continue
+        if pack_filter == "📁 Le tue" and not label.startswith("📁"):
+            continue
+        for t in tracks:
+            flat_opts.append((t, f"{label} · {Path(t).stem.replace('_', ' ')}"))
+
+    paths_only = [p for p, _ in flat_opts]
+    labels_map = {p: lab for p, lab in flat_opts}
+
+    # Suggerisci pack in base al template scelto
+    suggested = None
+    if tmpl and tmpl.get("style") == "imovie":
+        suggested = "🎬"
+    elif tmpl and tmpl.get("style") == "canva":
+        suggested = "🎨"
+    elif tmpl and tmpl.get("style") == "capcut":
+        suggested = "✂️"
+    if suggested and pack_filter == "Tutti":
+        st.caption(f"💡 Per il template **{sld_template}** prova la musica con icona {suggested}")
+
     default_music_idx = 0
-    if st.session_state.get("sld_last_music") in music_opts:
-        default_music_idx = music_opts.index(st.session_state["sld_last_music"]) + 1
+    last = st.session_state.get("sld_last_music")
+    if last in paths_only:
+        default_music_idx = paths_only.index(last)
 
     mc1, mc2, mc3 = st.columns(3)
     with mc1:
         sld_music = st.selectbox(
-            "Brano dalla libreria",
-            [""] + music_opts,
-            index=min(default_music_idx, len(music_opts)),
-            format_func=lambda x: Path(x).name if x else "(nessuna musica)",
+            "Scegli brano",
+            paths_only,
+            index=min(default_music_idx, max(0, len(paths_only) - 1)),
+            format_func=lambda x: labels_map.get(x, Path(x).name if x else "(nessuna)"),
             key="sld_music",
         )
     with mc2:
@@ -1408,6 +1465,7 @@ with tabs[3]:
         sld_fade_audio = st.slider("Fade audio (s)", 0.0, 3.0, float(default_fade), 0.1, key="sld_fade_audio")
     if sld_music:
         st.audio(sld_music)
+        st.caption(labels_map.get(sld_music, Path(sld_music).name))
 
     # ── Titoli (Canva / Adobe Express / iMovie) ──
     st.markdown("### ✍️ Titoli e testo")
@@ -1872,7 +1930,42 @@ with tabs[8]:
 # ═══════════════════════════════════════════════════════════════════════════
 with tabs[9]:
     st.markdown("## 🎵 Libreria Musica")
-    st.markdown("Carica e gestisci tracce audio per slideshow e video.")
+    st.markdown(
+        "Pacchetti **preinstallati** stile iMovie / Canva / CapCut + i tuoi brani caricati."
+    )
+
+    cpack1, cpack2 = st.columns([2, 1])
+    with cpack1:
+        ready = music_packs.all_packs_ready()
+        if ready:
+            st.success("✅ Pacchetti iMovie · Canva · CapCut installati")
+        else:
+            st.warning("Pacchetti incompleti — clicca per scaricarli")
+    with cpack2:
+        if st.button("📥 Installa / Aggiorna pacchetti", key="music_install_packs"):
+            with st.spinner("Download musica royalty-free…"):
+                stats = music_packs.ensure_music_packs(force=False)
+            st.success(f"Scaricate {stats['downloaded']} · saltate {stats['skipped']} · errori {stats['failed']}")
+            st.rerun()
+
+    st.info(
+        "⚠️ Non possiamo includere la musica originale proprietaria di Apple/Canva/CapCut. "
+        "Queste tracce sono **royalty-free** organizzate nello stesso stile d'uso "
+        "(cinematico, social, reels)."
+    )
+
+    grouped = music_packs.list_music_grouped()
+    if not grouped:
+        st.info("Nessun brano. Installa i pacchetti o carica la tua musica.")
+    else:
+        for label, tracks in grouped.items():
+            with st.expander(f"{label} ({len(tracks)} brani)", expanded=True):
+                for m in tracks:
+                    st.caption(Path(m).stem.replace("_", " "))
+                    st.audio(m)
+
+    st.divider()
+    st.markdown("### ➕ Carica le tue musiche")
     uploaded_music = st.file_uploader(
         "Carica musica", accept_multiple_files=True,
         type=["mp3", "wav", "aac", "flac", "ogg", "m4a"], key="music_tab_uploader",
@@ -1881,13 +1974,8 @@ with tabs[9]:
         for up in uploaded_music:
             _save_upload(up, "music")
         _refresh_library()
-    m_list = library.list_music()
-    if m_list:
-        for m in m_list:
-            st.audio(m)
-            st.caption(Path(m).name)
-    else:
-        st.info("Nessun brano caricato.")
+        st.success(f"✅ {len(uploaded_music)} brani caricati")
+        st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

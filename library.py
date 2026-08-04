@@ -20,6 +20,9 @@ MUSIC_EXTS = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a'}
 def init_library():
     for d in [ORIGINAL_PHOTOS, ORIGINAL_VIDEOS, EDITED_PHOTOS, EDITED_VIDEOS, MUSIC, EXPORTS]:
         d.mkdir(parents=True, exist_ok=True)
+    # sottocartelle pacchetti musica preinstallati
+    for pack in ("imovie", "canva", "capcut"):
+        (MUSIC / pack).mkdir(parents=True, exist_ok=True)
 
 
 def list_originals(kind="photos"):
@@ -35,7 +38,14 @@ def list_edited(kind="photos"):
 
 
 def list_music():
-    return sorted([str(f.resolve()) for f in MUSIC.iterdir() if f.suffix.lower() in MUSIC_EXTS and f.is_file()])
+    """Elenca tutta la musica (root + pacchetti imovie/canva/capcut)."""
+    if not MUSIC.is_dir():
+        return []
+    found = []
+    for f in MUSIC.rglob("*"):
+        if f.is_file() and f.suffix.lower() in MUSIC_EXTS:
+            found.append(str(f.resolve()))
+    return sorted(found)
 
 
 def save_to(kind, uploaded_file, area="originals"):
@@ -96,9 +106,21 @@ def resolve_media_path(path_or_name, kind="photos"):
         candidates = [ORIGINAL_VIDEOS / name, EDITED_VIDEOS / name]
     elif kind == "music":
         candidates = [MUSIC / name]
+        # cerca anche nei pacchetti preinstallati
+        for pack in ("imovie", "canva", "capcut"):
+            candidates.append(MUSIC / pack / name)
+        # se path_or_name e' un path relativo tipo imovie/track.mp3
+        if "/" in str(path_or_name).replace("\\", "/") or "\\" in str(path_or_name):
+            candidates.insert(0, MUSIC / Path(path_or_name))
+            candidates.insert(0, Path(path_or_name))
     for c in candidates:
         if c.is_file():
             return str(c.resolve())
+    # ultima chance: cerca per nome in tutta la cartella music
+    if kind == "music" and MUSIC.is_dir():
+        for f in MUSIC.rglob(name):
+            if f.is_file():
+                return str(f.resolve())
     return None
 
 
